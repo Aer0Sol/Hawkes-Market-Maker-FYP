@@ -61,7 +61,7 @@ the engine does not use them).
 |---|---|---|
 | Evidence | best of 27 configs per mode, 1 seed | 10 seeds per config, paired CIs, 240 engine runs reported |
 | Hawkes − baseline, best config | +869 PnL (11,592 vs 10,723) | +910, CI [841, 980] (A=0.12, k=4) |
-| Hawkes − baseline, calibrated fill model | n/a | +46.5, CI [23, 70] |
+| Hawkes − baseline, calibrated fill model | n/a | +46, CI [23, 70] |
 | **…with the OFI signal unused in quoting** | n/a | **+0.2, CI [−51, 51] (default); −18.6, CI [−40, 2] (calibrated)** |
 
 Interpretation: the whole Hawkes advantage comes from how each OFI signal drives the toxicity and skew logic. That

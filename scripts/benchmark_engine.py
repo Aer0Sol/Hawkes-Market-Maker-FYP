@@ -120,8 +120,7 @@ def run_once(run_idx: int, warmup: bool = False):
     outdir.mkdir(parents=True, exist_ok=True)
 
     cmd = build_cmd(outdir)
-    # Peak RSS needs GNU time; without it RSS is reported as missing (getrusage on
-    # children would count the forked Python parent before exec, which is misleading).
+    # Peak RSS needs GNU time; without it RSS is reported as n/a.
     have_gnu_time = os.access("/usr/bin/time", os.X_OK)
     timed_cmd = (["/usr/bin/time", "-v"] + cmd) if have_gnu_time else cmd
 

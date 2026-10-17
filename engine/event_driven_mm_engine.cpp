@@ -39,13 +39,11 @@ struct MMParams {
 
     int markout_horizon_steps = 1;
 
-    // Inventory-risk horizon in seconds for the A-S terms (sigma^2 * tau, with sigma in
-    // price units per second). tau = min(risk_horizon_s, seconds left in the session).
-    // <= 0 restores the original session-fraction tau in [0, 1].
+    // A-S risk horizon in seconds (tau); <= 0 uses the session fraction instead.
     double risk_horizon_s = 60.0;
-    // rv_60 fallback (log-return per second) for warm-up rows or non-positive values.
+    // rv_60 used for warm-up rows.
     double sigma_fallback = 1e-4;
-    // |ofi| above which the threatened side's quote is pulled (was hard-coded 0.45).
+    // |ofi| above which the threatened side is pulled.
     double toxic_pull_threshold = 0.45;
 };
 
@@ -217,7 +215,7 @@ static inline double round_to_tick(double px, double tick) {
     return std::round(px / tick) * tick;
 }
 
-// rv_60 is the std of 1-second log returns; A-S needs price units, so scale by mid.
+// rv_60 is a log-return std; A-S needs it in price units.
 static inline double compute_sigma(const Row& row, const MMParams& params) {
     double rv = (is_nan(row.rv_60) || row.rv_60 <= 0.0) ? params.sigma_fallback : row.rv_60;
     return rv * row.midprice;
@@ -273,8 +271,7 @@ static Quote avellaneda_stoikov_quotes(const Row& row,
     double raw_bid = q.reservation - q.half_spread;
     double raw_ask = q.reservation + q.half_spread;
 
-    // Informed buy flow (ofi > 0) lifts our ask; informed sell flow hits our bid.
-    // Widen (and optionally pull) the side that flow is about to trade against.
+    // Buy flow (ofi > 0) threatens the ask, sell flow the bid.
     if (ofi > params.toxic_ofi_threshold) {
         raw_ask += params.toxic_side_widen_ticks * params.tick_size;
         if (params.allow_one_sided_pull && ofi > params.toxic_pull_threshold) q.ask_active = false;
@@ -320,8 +317,7 @@ static double queue_haircut_ask(const Row& row, int order_size, double base) {
     return clamp01(base + 0.45 * ratio + 0.30 * depth_term);
 }
 
-// Haircut on the threatened side, consistent with the widening above:
-// sell flow (ofi < 0) threatens the bid, buy flow (ofi > 0) threatens the ask.
+// Haircut the threatened side (same rule as the widening above).
 static double toxicity_haircut_for_bid(const Row& row, const MMParams& params) {
     double ofi = compute_ofi_signal(row, params.use_hawkes);
     if (ofi < 0.0) return clamp01(1.0 - params.toxicity_haircut_strength * std::abs(ofi));
@@ -353,7 +349,7 @@ static double maker_fee(double fill_price, int qty, double maker_fee_bps) {
     return fill_price * static_cast<double>(qty) * maker_fee_bps / 10000.0;
 }
 
-// Markouts are per share and positive when the fill was profitable at the horizon.
+// Markouts per share; positive = profitable.
 static double bid_markout(double fill_price, double future_mid) {
     return future_mid - fill_price;
 }

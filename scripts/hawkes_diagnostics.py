@@ -1,20 +1,8 @@
 """Hawkes calibration diagnostics for the step 2 model.
 
-Checks the discrete bivariate Hawkes fit of step 2 (Poisson quasi-likelihood on
-1-second counts, shared decay beta) and compares it with an exact continuous-
-time fit on event timestamps:
-
- 1. fast reference recursion (scipy lfilter), asserted equal to step 2's loop
- 2. bucket occupancy (share of buckets with 0, 1, 2, 3+ events)
- 3. bucket-width robustness (0.25 s to 5 s), parameters rescaled to per-second units
- 4. null models: homogeneous Poisson and no-cross-excitation Hawkes (LR, AIC, BIC)
- 5. stability: spectral radius of the one-step companion matrix and of the branching matrix
- 6. sub-window refits (4 equal blocks of the session)
- 7. continuous-time exponential and two-exponential Hawkes MLE, time-rescaling
-    goodness of fit (KS test, Q-Q plot vs Exponential(1))
-
-Outputs: output/hawkes_diagnostics/{diagnostics.json, *.csv, *.png} and
-docs/hawkes_calibration.md. Usage: uv run python scripts/hawkes_diagnostics.py
+Occupancy, null models, stability, bucket-width and sub-window refits of the
+discrete fit, plus an exact continuous-time fit (1-3 exponentials) with a
+time-rescaling KS test. Writes output/hawkes_diagnostics/ and docs/hawkes_calibration.md.
 """
 
 from __future__ import annotations

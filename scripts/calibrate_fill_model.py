@@ -1,19 +1,12 @@
 """Calibrate the engine's parametric fill model  lambda(delta) = A * pressure * exp(-k * delta).
 
-For every 1-second bucket T we take the mid known at the end of T (row T of the
-feature table) and ask, for each distance delta (dollars): did an aggressive buy
-in the next second print at or above mid + delta (an ask resting at that
-distance would have been touched)? Symmetrically for sells and the bid.
+For each second and distance delta, check whether next-second aggressive trades
+reached mid + delta (asks) or mid - delta (bids), then fit
 
-    P_touch(delta) = 1 - exp(-Lambda(delta))   =>   Lambda(delta) = -ln(1 - P_touch)
-    ln Lambda(delta) = ln Lambda0 - k * delta          (least squares over the delta grid)
-    A = Lambda0 / mean(opposite-side pressure)
+    Lambda(delta) = -ln(1 - P_touch(delta)),   ln Lambda = ln Lambda0 - k * delta,
+    A = Lambda0 / mean pressure.
 
-"Touched" is an upper bound on "filled" (no queue position), which is what the
-engine's queue haircut is meant to cover. Uses only information available at T
-for the reference mid, so there is no look-ahead in the calibration itself.
-
-Usage: uv run python scripts/calibrate_fill_model.py
+Touched is an upper bound on filled (queue position is ignored).
 """
 
 from __future__ import annotations

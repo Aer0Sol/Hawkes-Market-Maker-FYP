@@ -51,7 +51,7 @@ in the repo, so the step 2 outputs were regenerated from the committed trade fil
 | Configuration | Hawkes − baseline PnL (95% CI) |
 |---|---:|
 | Best grid config (A=0.12, k=4) | +910 [841, 980] |
-| Calibrated fill model (A=0.066, k=58) | +47 [23, 70] |
+| Calibrated fill model (A=0.066, k=58) | +46 [23, 70] |
 | Default config, order-flow signal unused in quoting | +0.2 [−51, 51] |
 | Calibrated, order-flow signal unused in quoting | −19 [−40, 2] |
 

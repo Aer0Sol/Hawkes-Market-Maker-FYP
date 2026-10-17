@@ -140,7 +140,7 @@ paired differences. 24 trading configurations × 10 seeds = 240 engine runs. Sou
 |---|---:|---:|---:|
 | Best grid config (A=0.12, k=4) | 11,001 | 10,091 | +910 [841, 980] |
 | Default (A=0.08, k=6) | 4,931 | 4,553 | +377 [336, 418] |
-| Calibrated fill model (A=0.066, k=58) | 260 | 213 | +47 [23, 70] |
+| Calibrated fill model (A=0.066, k=58) | 260 | 213 | +46 [23, 70] |
 | Default, **OFI signal unused in quoting** | | | +0.2 [−51, 51] |
 | Calibrated, **OFI signal unused in quoting** | | | −19 [−40, 2] |
 

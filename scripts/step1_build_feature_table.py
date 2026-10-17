@@ -55,9 +55,7 @@ def parse_timestamp(df: pd.DataFrame) -> pd.Series:
     return pd.to_datetime(s, utc=True, errors="coerce")
 
 
-# Databento trades carry the aggressor side: 'B' = buy aggressor, 'A' = sell aggressor,
-# 'N' = none/unknown. Exact token matching; the old substring regex mapped 'A' to
-# NaN and '-1' to buy (it contains '1').
+# Databento aggressor side: 'B' = buy, 'A' = sell, 'N' = unknown.
 _BUY_TOKENS = {"b", "buy", "bid", "1", "1.0", "true"}
 _SELL_TOKENS = {"a", "s", "sell", "ask", "-1", "-1.0", "false"}
 

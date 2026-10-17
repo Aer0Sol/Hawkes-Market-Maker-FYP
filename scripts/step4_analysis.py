@@ -1,20 +1,7 @@
-"""Step 4: multi-seed parameter sweep, Hawkes vs baseline with confidence intervals.
+"""Step 4: multi-seed (A, k) sweep, Hawkes vs baseline with paired 95% confidence intervals.
 
-Changes vs the original sweep (see docs/changes.md):
-- every trading configuration runs over SEEDS (the fill simulation is stochastic);
-  tables report seed means, and the Hawkes-vs-baseline comparison is paired by
-  (A, k, seed) with a t-based 95% confidence interval;
-- markout_horizon only changes measurement, not trading, so the engine runs once
-  per (mode, A, k, seed) and markouts at each horizon are computed here from the
-  mid path;
-- toxicity regimes use one proxy (|EWMA buy - sell intensity| from the feature
-  table) for both modes, so regime cut points are identical across modes;
-- the fill-model parameters calibrated by scripts/calibrate_fill_model.py are
-  added as an extra configuration;
-- the number of trials evaluated is written to every report;
-- an ablation reruns Hawkes vs baseline with the OFI-driven logic switched off
-  (no toxicity widening/pulls/haircuts, no OFI skew), so the remaining gap can
-  only come from the pressure term of the fill model.
+Each configuration runs once per seed; markouts at other horizons are recomputed
+from that run. An ablation repeats the comparison with the OFI signal off in quoting.
 """
 
 import json

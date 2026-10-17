@@ -209,6 +209,54 @@ axins.grid(True, alpha=0.3)
 savefig("06_latency_cdf.png")
 
 
+# 7) Hawkes minus baseline PnL with paired 95% CIs, signal used vs unused
+paired = pd.read_csv(STEP4_DIR / "step4_hawkes_vs_baseline_paired.csv")
+ablation = pd.read_csv(STEP4_DIR / "step4_ablation_signal_off.csv")
+
+
+def ci_row(df, kind, A=None, k=None):
+    sel = df[df["config_kind"] == kind]
+    if A is not None:
+        sel = sel[np.isclose(sel["A"], A) & np.isclose(sel["k"], k)]
+    return sel.iloc[0]
+
+
+best = paired[paired["config_kind"] == "grid"].sort_values("mean_diff").iloc[-1]
+panels = [
+    ("Assumed fill model (k = 4–8 per USD)", [
+        (f"Best grid (A={best.A:g}, k={best.k:g}), signal used", best, "used"),
+        ("Default (A=0.08, k=6), signal used", ci_row(paired, "grid", 0.08, 6.0), "used"),
+        ("Default (A=0.08, k=6), signal unused", ci_row(ablation, "grid", 0.08, 6.0), "unused"),
+    ]),
+    ("Calibrated fill model (k ≈ 58 per USD)", [
+        ("Calibrated, signal used", ci_row(paired, "calibrated"), "used"),
+        ("Calibrated, signal unused", ci_row(ablation, "calibrated"), "unused"),
+    ]),
+]
+colors = {"used": "#2f6f9f", "unused": "#9a9a9a"}
+
+fig, axes = plt.subplots(2, 1, figsize=(10, 5.6), gridspec_kw={"height_ratios": [3, 2]})
+for ax, (title, rows) in zip(axes, panels):
+    for i, (label, r, variant) in enumerate(rows[::-1]):
+        lo, hi = r["ci95_lo"], r["ci95_hi"]
+        ax.plot([lo, hi], [i, i], color=colors[variant], linewidth=6, alpha=0.35, solid_capstyle="round")
+        ax.plot(r["mean_diff"], i, "o", color=colors[variant], markersize=8)
+        ax.annotate(f"{r['mean_diff']:+.0f}  [{lo:.0f}, {hi:.0f}]", (hi, i), xytext=(8, 0),
+                    textcoords="offset points", va="center", fontsize=9)
+    ax.set_yticks(range(len(rows)), [label for label, _, _ in rows[::-1]])
+    ax.axvline(0, color="black", linewidth=1)
+    ax.set_title(title, loc="left", fontsize=11)
+    lo_all = min(r["ci95_lo"] for _, r, _ in rows)
+    hi_all = max(r["ci95_hi"] for _, r, _ in rows)
+    pad = 0.35 * (hi_all - min(lo_all, 0))
+    ax.set_xlim(min(lo_all, 0) - 0.08 * pad, hi_all + pad)
+    ax.set_ylim(-0.6, len(rows) - 0.4)
+axes[-1].set_xlabel("Hawkes minus baseline final PnL (USD), mean over 10 paired seeds, 95% CI")
+fig.suptitle("Hawkes beats the baseline only when the order-flow signal drives quoting",
+             x=0.01, ha="left", fontsize=13)
+savefig("07_hawkes_vs_baseline_ci.png")
+
+
 summary_table = pd.DataFrame({
     "best_hawkes_run": [best_hawkes["run_id"]],
     "best_baseline_run": [best_baseline["run_id"]],

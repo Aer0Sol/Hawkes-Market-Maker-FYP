@@ -53,9 +53,7 @@ def parse_timestamp(df: pd.DataFrame) -> pd.Series:
     return pd.to_datetime(s, utc=True, errors="coerce")
 
 
-# Databento trades carry the aggressor side: 'B' = buy aggressor, 'A' = sell aggressor,
-# 'N' = none/unknown. Exact token matching; the old substring regex mapped 'A' to
-# NaN and '-1' to buy (it contains '1').
+# Databento aggressor side: 'B' = buy, 'A' = sell, 'N' = unknown.
 _BUY_TOKENS = {"b", "buy", "bid", "1", "1.0", "true"}
 _SELL_TOKENS = {"a", "s", "sell", "ask", "-1", "-1.0", "false"}
 
@@ -118,9 +116,7 @@ def prepare_trades_raw(df: pd.DataFrame) -> pd.DataFrame:
 def lee_ready_label(trades: pd.DataFrame, features: pd.DataFrame, lag_ms: int = 0) -> pd.DataFrame:
     tr = trades.copy()
     ft = features[["ts", "bid_px_1", "ask_px_1", "midprice"]].copy().sort_values("ts").reset_index(drop=True)
-    # Step 1 rows are labelled by bucket start but hold the book at the bucket END
-    # (resample(...).last()). Re-stamp them at the end so a trade is only matched to
-    # quotes that existed before it (previously: up to one bucket of look-ahead).
+    # Step 1 rows hold the book at the bucket end; stamp them there so trades only see past quotes.
     bucket = ft["ts"].diff().median()
     if pd.notna(bucket):
         ft["ts"] = ft["ts"] + bucket
@@ -145,8 +141,7 @@ def lee_ready_label(trades: pd.DataFrame, features: pd.DataFrame, lag_ms: int = 
     else:
         tr = tr.drop(columns=[c for c in ["ts_match"] if c in tr.columns])
 
-    # The exchange-reported aggressor side is ground truth when present; Lee-Ready
-    # (quote rule, then tick rule) only labels trades without it.
+    # Use the exchange side when present; Lee-Ready labels the rest.
     tr["lr_side"] = tr["native_side"]
     tr["label_source"] = np.where(tr["native_side"].notna(), "native", "")
     open_ = tr["lr_side"].isna()
