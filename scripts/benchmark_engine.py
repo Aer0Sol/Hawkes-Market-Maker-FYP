@@ -1,5 +1,6 @@
 import json
 import math
+import os
 import shutil
 import subprocess
 import time
@@ -9,7 +10,7 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(".")
-BIN = ROOT / "bin" / "step3_mm"
+BIN = ROOT / "bin" / "step3_mm"  # build with `make build`
 FEATURES = ROOT / "output" / "step2_hawkes" / "feature_table_step2_1s.csv"
 BENCH_DIR = ROOT / "benchmark_results"
 RUNS_DIR = BENCH_DIR / "runs"
@@ -119,7 +120,10 @@ def run_once(run_idx: int, warmup: bool = False):
     outdir.mkdir(parents=True, exist_ok=True)
 
     cmd = build_cmd(outdir)
-    timed_cmd = ["/usr/bin/time", "-v"] + cmd
+    # Peak RSS needs GNU time; without it RSS is reported as missing (getrusage on
+    # children would count the forked Python parent before exec, which is misleading).
+    have_gnu_time = os.access("/usr/bin/time", os.X_OK)
+    timed_cmd = (["/usr/bin/time", "-v"] + cmd) if have_gnu_time else cmd
 
     t0 = time.perf_counter_ns()
     proc = subprocess.run(
@@ -132,7 +136,7 @@ def run_once(run_idx: int, warmup: bool = False):
     t1 = time.perf_counter_ns()
 
     wall_ms = (t1 - t0) / 1_000_000.0
-    peak_rss_kb = get_peak_rss_kb_from_time(proc.stderr)
+    peak_rss_kb = get_peak_rss_kb_from_time(proc.stderr) if have_gnu_time else math.nan
 
     summary_path = outdir / "step3_summary.json"
     with open(summary_path, "r") as f:
@@ -226,7 +230,8 @@ def main():
     md.append(f"- p95 wall time: {safe_summary['wall_ms_p95']:.3f} ms")
     md.append(f"- Mean throughput: {safe_summary['throughput_eps_mean']:.2f} events/sec")
     md.append(f"- Median throughput: {safe_summary['throughput_eps_median']:.2f} events/sec")
-    md.append(f"- Mean peak RSS: {safe_summary['peak_rss_kb_mean']:.2f} KB")
+    rss = safe_summary["peak_rss_kb_mean"]
+    md.append(f"- Mean peak RSS: {rss:.2f} KB" if rss is not None else "- Mean peak RSS: n/a (GNU time not installed)")
     md.append(f"- Median engine p50 latency: {safe_summary['engine_p50_us_median']:.6f} us")
     md.append(f"- Median engine p95 latency: {safe_summary['engine_p95_us_median']:.6f} us")
     md.append(f"- Median engine p99 latency: {safe_summary['engine_p99_us_median']:.6f} us")

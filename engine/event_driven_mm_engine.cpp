@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
@@ -37,6 +38,15 @@ struct MMParams {
     bool allow_one_sided_pull = true;
 
     int markout_horizon_steps = 1;
+
+    // Inventory-risk horizon in seconds for the A-S terms (sigma^2 * tau, with sigma in
+    // price units per second). tau = min(risk_horizon_s, seconds left in the session).
+    // <= 0 restores the original session-fraction tau in [0, 1].
+    double risk_horizon_s = 60.0;
+    // rv_60 fallback (log-return per second) for warm-up rows or non-positive values.
+    double sigma_fallback = 1e-4;
+    // |ofi| above which the threatened side's quote is pulled (was hard-coded 0.45).
+    double toxic_pull_threshold = 0.45;
 };
 
 struct EngineState {
@@ -207,9 +217,10 @@ static inline double round_to_tick(double px, double tick) {
     return std::round(px / tick) * tick;
 }
 
-static inline double compute_sigma(const Row& row) {
-    if (is_nan(row.rv_60) || row.rv_60 <= 0.0) return 0.001;
-    return row.rv_60;
+// rv_60 is the std of 1-second log returns; A-S needs price units, so scale by mid.
+static inline double compute_sigma(const Row& row, const MMParams& params) {
+    double rv = (is_nan(row.rv_60) || row.rv_60 <= 0.0) ? params.sigma_fallback : row.rv_60;
+    return rv * row.midprice;
 }
 
 static inline double compute_ofi_signal(const Row& row, bool use_hawkes) {
@@ -223,6 +234,7 @@ struct Quote {
     double best_bid = 0.0;
     double best_ask = 0.0;
     double sigma = 0.0;
+    double tau = 0.0;
     double reservation = 0.0;
     double half_spread = 0.0;
     double bid_px = 0.0;
@@ -234,14 +246,18 @@ struct Quote {
 static Quote avellaneda_stoikov_quotes(const Row& row,
                                        const EngineState& state,
                                        const MMParams& params,
-                                       double t_frac) {
+                                       double t_frac,
+                                       double seconds_left) {
     Quote q;
     q.mid = row.midprice;
     q.best_bid = row.bid_px_1;
     q.best_ask = row.ask_px_1;
-    q.sigma = compute_sigma(row);
+    q.sigma = compute_sigma(row, params);
 
-    double tau = std::max(1e-6, 1.0 - t_frac);
+    double tau = (params.risk_horizon_s > 0.0)
+        ? std::max(1e-6, std::min(params.risk_horizon_s, seconds_left))
+        : std::max(1e-6, 1.0 - t_frac);
+    q.tau = tau;
     double ofi = compute_ofi_signal(row, params.use_hawkes);
 
     q.reservation = q.mid - state.inventory * params.gamma * q.sigma * q.sigma * tau;
@@ -257,12 +273,14 @@ static Quote avellaneda_stoikov_quotes(const Row& row,
     double raw_bid = q.reservation - q.half_spread;
     double raw_ask = q.reservation + q.half_spread;
 
+    // Informed buy flow (ofi > 0) lifts our ask; informed sell flow hits our bid.
+    // Widen (and optionally pull) the side that flow is about to trade against.
     if (ofi > params.toxic_ofi_threshold) {
-        raw_bid -= params.toxic_side_widen_ticks * params.tick_size;
-        if (params.allow_one_sided_pull && ofi > 0.45) q.bid_active = false;
-    } else if (ofi < -params.toxic_ofi_threshold) {
         raw_ask += params.toxic_side_widen_ticks * params.tick_size;
-        if (params.allow_one_sided_pull && ofi < -0.45) q.ask_active = false;
+        if (params.allow_one_sided_pull && ofi > params.toxic_pull_threshold) q.ask_active = false;
+    } else if (ofi < -params.toxic_ofi_threshold) {
+        raw_bid -= params.toxic_side_widen_ticks * params.tick_size;
+        if (params.allow_one_sided_pull && ofi < -params.toxic_pull_threshold) q.bid_active = false;
     }
 
     q.bid_px = std::min(round_to_tick(raw_bid, params.tick_size), q.best_bid);
@@ -302,15 +320,17 @@ static double queue_haircut_ask(const Row& row, int order_size, double base) {
     return clamp01(base + 0.45 * ratio + 0.30 * depth_term);
 }
 
+// Haircut on the threatened side, consistent with the widening above:
+// sell flow (ofi < 0) threatens the bid, buy flow (ofi > 0) threatens the ask.
 static double toxicity_haircut_for_bid(const Row& row, const MMParams& params) {
     double ofi = compute_ofi_signal(row, params.use_hawkes);
-    if (ofi > 0.0) return clamp01(1.0 - params.toxicity_haircut_strength * std::abs(ofi));
+    if (ofi < 0.0) return clamp01(1.0 - params.toxicity_haircut_strength * std::abs(ofi));
     return 1.0;
 }
 
 static double toxicity_haircut_for_ask(const Row& row, const MMParams& params) {
     double ofi = compute_ofi_signal(row, params.use_hawkes);
-    if (ofi < 0.0) return clamp01(1.0 - params.toxicity_haircut_strength * std::abs(ofi));
+    if (ofi > 0.0) return clamp01(1.0 - params.toxicity_haircut_strength * std::abs(ofi));
     return 1.0;
 }
 
@@ -333,19 +353,21 @@ static double maker_fee(double fill_price, int qty, double maker_fee_bps) {
     return fill_price * static_cast<double>(qty) * maker_fee_bps / 10000.0;
 }
 
+// Markouts are per share and positive when the fill was profitable at the horizon.
 static double bid_markout(double fill_price, double future_mid) {
-    return fill_price - future_mid;
-}
-
-static double ask_markout(double fill_price, double future_mid) {
     return future_mid - fill_price;
 }
 
-static std::vector<ResultRow> run_engine(const std::vector<Row>& rows, const MMParams& params) {
+static double ask_markout(double fill_price, double future_mid) {
+    return fill_price - future_mid;
+}
+
+static std::vector<ResultRow> run_engine(const std::vector<Row>& rows, const MMParams& params,
+                                         EngineState& state) {
     std::vector<ResultRow> out;
     out.reserve(rows.size());
 
-    EngineState state;
+    state = EngineState{};
     std::mt19937_64 rng(params.seed);
     std::uniform_real_distribution<double> uni(0.0, 1.0);
 
@@ -353,13 +375,14 @@ static std::vector<ResultRow> run_engine(const std::vector<Row>& rows, const MMP
     for (size_t i = 0; i < n; ++i) {
         const Row& row = rows[i];
         double t_frac = (n > 1) ? static_cast<double>(i) / static_cast<double>(n - 1) : 0.0;
+        double seconds_left = static_cast<double>(n - 1 - i);  // rows are 1 s apart
 
         size_t future_idx = std::min(i + static_cast<size_t>(std::max(1, params.markout_horizon_steps)), n - 1);
         double future_mid = rows[future_idx].midprice;
 
         auto start = std::chrono::high_resolution_clock::now();
 
-        Quote q = avellaneda_stoikov_quotes(row, state, params, t_frac);
+        Quote q = avellaneda_stoikov_quotes(row, state, params, t_frac, seconds_left);
         RiskDecision risk = risk_check(state, params);
 
         if (!risk.can_bid || !risk.can_ask) state.risk_rejects++;
@@ -411,7 +434,7 @@ static std::vector<ResultRow> run_engine(const std::vector<Row>& rows, const MMP
             state.total_bid_volume += bid_fill_qty;
 
             bid_mo = bid_markout(q.bid_px, future_mid);
-            adverse_cost += std::max(0.0, -bid_mo) * static_cast<double>(bid_fill_qty);
+            adverse_cost += std::max(0.0, q.mid - future_mid) * static_cast<double>(bid_fill_qty);
             realized_spread_component += (q.mid - q.bid_px) * static_cast<double>(bid_fill_qty);
         }
 
@@ -427,7 +450,7 @@ static std::vector<ResultRow> run_engine(const std::vector<Row>& rows, const MMP
             state.total_ask_volume += ask_fill_qty;
 
             ask_mo = ask_markout(q.ask_px, future_mid);
-            adverse_cost += std::max(0.0, -ask_mo) * static_cast<double>(ask_fill_qty);
+            adverse_cost += std::max(0.0, future_mid - q.mid) * static_cast<double>(ask_fill_qty);
             realized_spread_component += (q.ask_px - q.mid) * static_cast<double>(ask_fill_qty);
         }
 
@@ -523,7 +546,8 @@ static double percentile(std::vector<double> v, double p) {
 
 static void write_summary_json(const std::string& path,
                                const std::vector<ResultRow>& rows,
-                               const MMParams& params) {
+                               const MMParams& params,
+                               const EngineState& state) {
     if (rows.empty()) throw std::runtime_error("No result rows to summarize.");
 
     std::vector<double> latencies;
@@ -586,7 +610,12 @@ static void write_summary_json(const std::string& path,
     fout << "    \"toxicity_haircut_strength\": " << params.toxicity_haircut_strength << ",\n";
     fout << "    \"toxic_ofi_threshold\": " << params.toxic_ofi_threshold << ",\n";
     fout << "    \"toxic_side_widen_ticks\": " << params.toxic_side_widen_ticks << ",\n";
-    fout << "    \"markout_horizon_steps\": " << params.markout_horizon_steps << "\n";
+    fout << "    \"markout_horizon_steps\": " << params.markout_horizon_steps << ",\n";
+    fout << "    \"risk_horizon_s\": " << params.risk_horizon_s << ",\n";
+    fout << "    \"sigma_fallback\": " << params.sigma_fallback << ",\n";
+    fout << "    \"toxic_pull_threshold\": " << params.toxic_pull_threshold << ",\n";
+    fout << "    \"allow_one_sided_pull\": " << (params.allow_one_sided_pull ? "true" : "false") << ",\n";
+    fout << "    \"seed\": " << params.seed << "\n";
     fout << "  },\n";
     fout << "  \"n_steps\": " << n << ",\n";
     fout << "  \"final_inventory\": " << rows.back().inventory << ",\n";
@@ -607,6 +636,7 @@ static void write_summary_json(const std::string& path,
     fout << "  \"avg_ask_markout_per_fill\": " << (ask_markout_n ? ask_markout_sum / ask_markout_n : 0.0) << ",\n";
     fout << "  \"bid_quote_pulls\": " << bid_pulls << ",\n";
     fout << "  \"ask_quote_pulls\": " << ask_pulls << ",\n";
+    fout << "  \"risk_reject_steps\": " << state.risk_rejects << ",\n";
     fout << "  \"mean_latency_us\": " << mean_lat << ",\n";
     fout << "  \"p50_latency_us\": " << percentile(latencies, 50.0) << ",\n";
     fout << "  \"p95_latency_us\": " << percentile(latencies, 95.0) << ",\n";
@@ -649,6 +679,9 @@ static MMParams parse_args(int argc, char** argv, std::string& input_csv, std::s
         else if (arg == "--toxic-side-widen-ticks") next_d(params.toxic_side_widen_ticks);
         else if (arg == "--disable-one-sided-pull") params.allow_one_sided_pull = false;
         else if (arg == "--markout-horizon-steps") next_i(params.markout_horizon_steps);
+        else if (arg == "--risk-horizon-s") next_d(params.risk_horizon_s);
+        else if (arg == "--sigma-fallback") next_d(params.sigma_fallback);
+        else if (arg == "--toxic-pull-threshold") next_d(params.toxic_pull_threshold);
         else throw std::runtime_error("Unknown argument: " + arg);
     }
 
@@ -666,16 +699,16 @@ int main(int argc, char** argv) {
         std::cout << "Rows loaded: " << rows.size() << "\n";
 
         std::cout << "Running calibrated C++ event-driven market-making engine...\n";
-        auto results = run_engine(rows, params);
+        EngineState state;
+        auto results = run_engine(rows, params, state);
 
-        std::string mkdir_cmd = "mkdir -p " + outdir;
-        if (std::system(mkdir_cmd.c_str()) != 0) throw std::runtime_error("Failed to create output directory.");
+        std::filesystem::create_directories(outdir);
 
         std::string results_csv = outdir + "/engine_results.csv";
         std::string summary_json = outdir + "/step3_summary.json";
 
         write_results_csv(results_csv, results);
-        write_summary_json(summary_json, results, params);
+        write_summary_json(summary_json, results, params, state);
 
         std::cout << "Saved files:\n";
         std::cout << " - " << results_csv << "\n";

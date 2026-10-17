@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.5"
+
+      - name: Install Python env (locked)
+        run: uv sync --frozen
+
+      - name: Build legacy engine (pristine + instrumented)
+        run: make build CXX=g++
+
+      - name: Lint
+        run: make lint
+
+      - name: Tests (smoke, golden master, legacy instrumentation parity)
+        run: uv run --frozen pytest -q

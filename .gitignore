@@ -1,1 +1,24 @@
-data/
+# Licensed raw market data (Databento) — never commit. See data/README.md.
+data/*
+!data/README.md
+
+# Secrets
+.env
+
+# Build artifacts (make build)
+bin/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Regenerable per-run engine outputs (8.5 MB each, latency columns are non-deterministic).
+# Summaries and aggregate tables stay tracked.
+output/step4_analysis/runs/*/engine_results.csv
+benchmark_results/runs/
+
+# Experiment store (Phase 2)
+experiments/

@@ -1,2 +1,2 @@
 best_hawkes_run,best_baseline_run,best_hawkes_final_pnl,best_baseline_final_pnl,best_hawkes_risk_adjusted_score,best_baseline_risk_adjusted_score
-hawkes__A_0.12__k_4.0__h_5,baseline__A_0.12__k_4.0__h_5,11592.469225,10723.179285,11450.00664476496,10527.799835384616
+hawkes__A_0.12__k_4.0__h_1,baseline__A_0.12__k_4.0__h_1,11000.910891,10090.6789985,10982.905166173075,10068.115974702992

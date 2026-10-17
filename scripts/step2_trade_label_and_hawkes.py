@@ -36,6 +36,8 @@ def parse_timestamp(df: pd.DataFrame) -> pd.Series:
         raise KeyError(f"Could not find timestamp column. Available columns: {list(df.columns)}")
 
     s = df[col]
+    if isinstance(s.dtype, pd.DatetimeTZDtype) or pd.api.types.is_datetime64_dtype(s):
+        return pd.to_datetime(s, utc=True)
     if np.issubdtype(s.dtype, np.number):
         s_nonnull = s.dropna()
         vmax = s_nonnull.max()
@@ -49,6 +51,18 @@ def parse_timestamp(df: pd.DataFrame) -> pd.Series:
             return pd.to_datetime(s, unit="s", utc=True)
 
     return pd.to_datetime(s, utc=True, errors="coerce")
+
+
+# Databento trades carry the aggressor side: 'B' = buy aggressor, 'A' = sell aggressor,
+# 'N' = none/unknown. Exact token matching; the old substring regex mapped 'A' to
+# NaN and '-1' to buy (it contains '1').
+_BUY_TOKENS = {"b", "buy", "bid", "1", "1.0", "true"}
+_SELL_TOKENS = {"a", "s", "sell", "ask", "-1", "-1.0", "false"}
+
+
+def map_aggressor_side(series: pd.Series) -> np.ndarray:
+    raw = series.astype(str).str.strip().str.lower()
+    return np.where(raw.isin(_BUY_TOKENS), 1.0, np.where(raw.isin(_SELL_TOKENS), -1.0, np.nan))
 
 
 def normalize_price(series: pd.Series) -> pd.Series:
@@ -84,7 +98,7 @@ def prepare_trades_raw(df: pd.DataFrame) -> pd.DataFrame:
 
     price_col = find_first_existing(df, ["price", "px"])
     size_col = find_first_existing(df, ["size", "qty", "quantity"])
-    side_col = find_first_existing(df, ["side", "aggressor_side", "action", "is_aggressor"])
+    side_col = find_first_existing(df, ["side", "aggressor_side", "native_side", "is_aggressor"])
 
     if price_col is None or size_col is None:
         raise KeyError(f"Could not find trade price/size columns. Available columns: {list(df.columns)}")
@@ -93,13 +107,7 @@ def prepare_trades_raw(df: pd.DataFrame) -> pd.DataFrame:
     df["size"] = pd.to_numeric(df[size_col], errors="coerce")
 
     if side_col is not None:
-        raw = df[side_col].astype(str).str.lower()
-        side = np.where(
-            raw.str.contains("buy|bid|b|1|true"),
-            1,
-            np.where(raw.str.contains("sell|ask|s|-1|false"), -1, np.nan),
-        )
-        df["native_side"] = side
+        df["native_side"] = map_aggressor_side(df[side_col])
     else:
         df["native_side"] = np.nan
 
@@ -110,6 +118,12 @@ def prepare_trades_raw(df: pd.DataFrame) -> pd.DataFrame:
 def lee_ready_label(trades: pd.DataFrame, features: pd.DataFrame, lag_ms: int = 0) -> pd.DataFrame:
     tr = trades.copy()
     ft = features[["ts", "bid_px_1", "ask_px_1", "midprice"]].copy().sort_values("ts").reset_index(drop=True)
+    # Step 1 rows are labelled by bucket start but hold the book at the bucket END
+    # (resample(...).last()). Re-stamp them at the end so a trade is only matched to
+    # quotes that existed before it (previously: up to one bucket of look-ahead).
+    bucket = ft["ts"].diff().median()
+    if pd.notna(bucket):
+        ft["ts"] = ft["ts"] + bucket
 
     if lag_ms != 0:
         tr["ts_match"] = tr["ts"] - pd.to_timedelta(lag_ms, unit="ms")
@@ -131,31 +145,34 @@ def lee_ready_label(trades: pd.DataFrame, features: pd.DataFrame, lag_ms: int = 
     else:
         tr = tr.drop(columns=[c for c in ["ts_match"] if c in tr.columns])
 
-    tr["lr_side"] = np.nan
+    # The exchange-reported aggressor side is ground truth when present; Lee-Ready
+    # (quote rule, then tick rule) only labels trades without it.
+    tr["lr_side"] = tr["native_side"]
+    tr["label_source"] = np.where(tr["native_side"].notna(), "native", "")
+    open_ = tr["lr_side"].isna()
 
-    buy_mask = tr["price"] >= tr["ask_px_1"]
-    sell_mask = tr["price"] <= tr["bid_px_1"]
-    mid_buy = (tr["price"] > tr["midprice"]) & (~buy_mask) & (~sell_mask)
-    mid_sell = (tr["price"] < tr["midprice"]) & (~buy_mask) & (~sell_mask)
+    buy_mask = open_ & (tr["price"] >= tr["ask_px_1"])
+    sell_mask = open_ & (tr["price"] <= tr["bid_px_1"])
+    mid_buy = open_ & (tr["price"] > tr["midprice"]) & (~buy_mask) & (~sell_mask)
+    mid_sell = open_ & (tr["price"] < tr["midprice"]) & (~buy_mask) & (~sell_mask)
 
     tr.loc[buy_mask, "lr_side"] = 1
     tr.loc[sell_mask, "lr_side"] = -1
     tr.loc[mid_buy, "lr_side"] = 1
     tr.loc[mid_sell, "lr_side"] = -1
+    tr.loc[open_ & tr["lr_side"].notna(), "label_source"] = "quote"
 
     unresolved = tr["lr_side"].isna()
     if unresolved.any():
         price_diff = tr["price"].diff()
         tick_rule = np.where(price_diff > 0, 1, np.where(price_diff < 0, -1, np.nan))
         tr.loc[unresolved, "lr_side"] = tick_rule[unresolved]
-
-    unresolved = tr["lr_side"].isna()
-    if unresolved.any():
-        tr.loc[unresolved, "lr_side"] = tr.loc[unresolved, "native_side"]
+        tr.loc[unresolved & tr["lr_side"].notna(), "label_source"] = "tick"
 
     unresolved = tr["lr_side"].isna()
     if unresolved.any():
         tr["lr_side"] = tr["lr_side"].ffill().bfill()
+        tr.loc[unresolved, "label_source"] = "fill"
 
     tr["trade_sign"] = tr["lr_side"].astype(int)
     tr["signed_size"] = tr["size"] * tr["trade_sign"]
@@ -347,6 +364,8 @@ def build_summary(trades_labeled: pd.DataFrame, baseline_int: pd.DataFrame, hawk
         "n_sell": sell_n,
         "buy_fraction": float(buy_n / n) if n else None,
         "sell_fraction": float(sell_n / n) if n else None,
+        "label_sources": {str(k): int(v) for k, v in trades_labeled["label_source"].value_counts().items()}
+        if "label_source" in trades_labeled else None,
         "avg_lambda_buy_ewm": float(baseline_int["lambda_buy_ewm"].mean()),
         "avg_lambda_sell_ewm": float(baseline_int["lambda_sell_ewm"].mean()),
         "hawkes_fit": {

@@ -1,0 +1,49 @@
+{
+  "method": "touch-probability curve, next-second trades vs end-of-bucket mid; see script docstring",
+  "n_buckets": 23399,
+  "delta_grid_dollars": [
+    0.005,
+    0.01,
+    0.015,
+    0.02,
+    0.025,
+    0.03,
+    0.035,
+    0.04,
+    0.045,
+    0.05,
+    0.055,
+    0.06,
+    0.065,
+    0.07,
+    0.075,
+    0.08,
+    0.085,
+    0.09,
+    0.095,
+    0.1
+  ],
+  "per_side": {
+    "ask": {
+      "Lambda0_per_s": 0.2609321070456847,
+      "k_per_dollar": 60.901396898326794,
+      "mean_pressure_ewm": 4.26779669575416,
+      "A_ewm": 0.061139769686141425
+    },
+    "bid": {
+      "Lambda0_per_s": 0.21403666505358002,
+      "k_per_dollar": 55.70279507112115,
+      "mean_pressure_ewm": 2.9683653792407636,
+      "A_ewm": 0.07210590264609724
+    }
+  },
+  "k_per_dollar": 58.30209598472398,
+  "A": 0.06563821638829143,
+  "A_hawkes_pressure": 0.06739104608966494,
+  "implied_half_spread_gamma_0.1": 0.017137349187977637,
+  "caveats": [
+    "touch is an upper bound on fill: queue position is ignored (engine queue haircut applies on top)",
+    "one day, one symbol; exponential shape is an approximation, see the plot",
+    "A is scaled by the mean EWMA pressure; the Hawkes-pressure equivalent is A_hawkes_pressure"
+  ]
+}

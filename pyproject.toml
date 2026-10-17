@@ -1,0 +1,34 @@
+[project]
+name = "hawkes-market-maker"
+version = "0.1.0"
+description = "Hawkes-informed market-making research platform"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "numpy==2.3.5",
+    "pandas==2.3.3",
+    "scipy==1.16.3",
+    "pyarrow==21.0.0",
+    "matplotlib==3.10.9",
+    "numba==0.62.1",
+]
+
+[dependency-groups]
+dev = ["pytest==9.1.1", "ruff==0.17.1"]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff.lint.per-file-ignores]
+# pandas boolean-mask idiom `df[col] == True` is intentional in the analysis scripts
+"scripts/*" = ["E712"]

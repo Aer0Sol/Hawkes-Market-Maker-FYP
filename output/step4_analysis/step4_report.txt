@@ -1,21 +1,46 @@
 STEP 4 COMPLETE
 
-Overall best run: hawkes__A_0.12__k_4.0__h_5
-Overall best final MTM PnL: 11592.47
-Overall best risk-adjusted score: 11450.01
+Data: AAPL 2024-06-03, one session (23,400 one-second rows). In-sample; no holdout.
+Trials: 24 trading configurations x 10 seeds = 240 engine runs, including the ablation (markout horizons [1, 3, 5] re-measure the same runs).
+Seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]. All numbers below are seed means unless stated.
 
-Best Hawkes run
-  run_id: hawkes__A_0.12__k_4.0__h_5
-  final_mtm_pnl: 11592.47
-  risk_adjusted_score: 11450.01
-  avg_markout_all_fills: -0.245607
+Overall best config (by mean risk-adjusted score): hawkes__A_0.12__k_4.0__h_1
+  mean final MTM PnL 11000.91 (seed std 213.64)
+  median config final PnL across all configs: 4682.08
 
-Best Baseline run
-  run_id: baseline__A_0.12__k_4.0__h_5
-  final_mtm_pnl: 10723.18
-  risk_adjusted_score: 10527.80
-  avg_markout_all_fills: -0.250611
+Best Hawkes config
+  run_id: hawkes__A_0.12__k_4.0__h_1
+  final_mtm_pnl: 11000.91 (seed std 213.64)
+  risk_adjusted_score: 10982.91
+  avg_markout_all_fills: 0.234611 (positive = profitable)
 
-Hawkes vs Baseline Aggregate
-  baseline: mean_final_mtm_pnl=5283.10, median_final_mtm_pnl=4517.32, mean_risk_adjusted_score=5083.70, mean_avg_markout_all_fills=-0.182461, mean_total_adverse_selection_cost=5565.69
-  hawkes: mean_final_mtm_pnl=6117.26, median_final_mtm_pnl=5463.57, mean_risk_adjusted_score=5933.94, mean_avg_markout_all_fills=-0.178501, mean_total_adverse_selection_cost=5891.94
+Best Baseline config
+  run_id: baseline__A_0.12__k_4.0__h_1
+  final_mtm_pnl: 10090.68 (seed std 203.46)
+  risk_adjusted_score: 10068.12
+  avg_markout_all_fills: 0.234028 (positive = profitable)
+
+Hawkes minus baseline final PnL, paired on (A, k, seed), 95% t-interval over seeds:
+  [calibrated] A=0.0656 k=58.3   diff=    46.50 CI=[    23.26,     69.73] (excludes 0); hawkes better in 90% of seeds
+  [grid      ] A=0.05   k=4.0    diff=   337.30 CI=[   265.09,    409.50] (excludes 0); hawkes better in 100% of seeds
+  [grid      ] A=0.05   k=6.0    diff=   246.40 CI=[   201.77,    291.03] (excludes 0); hawkes better in 100% of seeds
+  [grid      ] A=0.05   k=8.0    diff=   187.73 CI=[   134.08,    241.37] (excludes 0); hawkes better in 100% of seeds
+  [grid      ] A=0.08   k=4.0    diff=   572.82 CI=[   522.03,    623.61] (excludes 0); hawkes better in 100% of seeds
+  [grid      ] A=0.08   k=6.0    diff=   377.29 CI=[   336.41,    418.16] (excludes 0); hawkes better in 100% of seeds
+  [grid      ] A=0.08   k=8.0    diff=   272.73 CI=[   229.61,    315.85] (excludes 0); hawkes better in 100% of seeds
+  [grid      ] A=0.12   k=4.0    diff=   910.23 CI=[   840.79,    979.67] (excludes 0); hawkes better in 100% of seeds
+  [grid      ] A=0.12   k=6.0    diff=   614.78 CI=[   531.80,    697.76] (excludes 0); hawkes better in 100% of seeds
+  [grid      ] A=0.12   k=8.0    diff=   457.92 CI=[   400.30,    515.54] (excludes 0); hawkes better in 100% of seeds
+
+Ablation: same comparison with the OFI signal unused in quoting (no toxicity logic, no OFI skew):
+  [grid      ] A=0.08   k=6.0    diff=     0.24 CI=[   -50.75,     51.22] (includes 0)
+  [calibrated] A=0.0656 k=58.3   diff=   -18.63 CI=[   -39.51,      2.25] (includes 0)
+  Whatever gap remains here comes only from the Hawkes intensity entering the simulated fill rate.
+
+Grid aggregate (original A/k grid only):
+  baseline: mean_final_mtm_pnl=5115.80, median=4606.60, mean_avg_markout_all_fills=0.165991
+  hawkes: mean_final_mtm_pnl=5557.71, median=4943.90, mean_avg_markout_all_fills=0.166945
+
+Caveats: fills are simulated by a parametric model that also consumes the Hawkes intensity, so
+the comparison is partly circular; one day of data; the CI covers fill-simulation noise only,
+not day-to-day market variation. See README 'Limitations'.

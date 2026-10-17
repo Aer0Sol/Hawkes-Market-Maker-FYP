@@ -1,3 +1,10 @@
+> **Note (superseded results).** This report describes the original version of the project. Several of its
+> numbers came from engine bugs that have since been fixed, and from a single-seed, best-run comparison:
+> inverted markout and adverse-selection signs, toxicity logic protecting the wrong side, an inventory-risk term
+> of ~1e-6 dollars, an uncalibrated fill model, and trade-sign labels that agreed with the exchange's aggressor
+> flag only 53% of the time. See [`docs/changes.md`](docs/changes.md) for what changed and the corrected,
+> multi-seed results, and the README for current numbers.
+
 # Low-Latency Market-Making Engine with Hawkes-Driven Order Flow Modeling
 
 ## Overview

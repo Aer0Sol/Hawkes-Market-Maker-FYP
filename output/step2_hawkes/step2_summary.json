@@ -1,23 +1,29 @@
 {
   "n_trades": 164922,
-  "n_buy": 88469,
-  "n_sell": 76453,
-  "buy_fraction": 0.5364293423557803,
-  "sell_fraction": 0.4635706576442197,
-  "avg_lambda_buy_ewm": 3.899793795571683,
-  "avg_lambda_sell_ewm": 3.336368279423239,
+  "n_buy": 97413,
+  "n_sell": 67509,
+  "buy_fraction": 0.5906610397642522,
+  "sell_fraction": 0.4093389602357478,
+  "label_sources": {
+    "quote": 90204,
+    "native": 70565,
+    "fill": 2403,
+    "tick": 1750
+  },
+  "avg_lambda_buy_ewm": 4.26779669575416,
+  "avg_lambda_sell_ewm": 2.9683653792407636,
   "hawkes_fit": {
     "success": true,
-    "message": "CONVERGENCE: REL_REDUCTION_OF_F_<=_FACTR*EPSMCH",
-    "fun": -72445.37040625437,
+    "message": "CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH",
+    "fun": -75751.97311467238,
     "params": {
-      "mu_buy": 0.041561052479339305,
-      "mu_sell": 0.025188229895045707,
-      "alpha_bb": 0.03186960694069744,
-      "alpha_bs": 0.013610092641757063,
-      "alpha_ss": 0.019559522038383716,
-      "alpha_sb": 0.023707552810904264,
-      "beta": 0.9457595062060707
+      "mu_buy": 0.024040878491019223,
+      "mu_sell": 0.059855448148407826,
+      "alpha_bb": 0.04051493179932133,
+      "alpha_bs": 0.01782487968857546,
+      "alpha_ss": 0.019808200299986457,
+      "alpha_sb": 0.012374710327035436,
+      "beta": 0.9419367562969546
     }
   }
 }

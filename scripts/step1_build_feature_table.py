@@ -55,6 +55,18 @@ def parse_timestamp(df: pd.DataFrame) -> pd.Series:
     return pd.to_datetime(s, utc=True, errors="coerce")
 
 
+# Databento trades carry the aggressor side: 'B' = buy aggressor, 'A' = sell aggressor,
+# 'N' = none/unknown. Exact token matching; the old substring regex mapped 'A' to
+# NaN and '-1' to buy (it contains '1').
+_BUY_TOKENS = {"b", "buy", "bid", "1", "1.0", "true"}
+_SELL_TOKENS = {"a", "s", "sell", "ask", "-1", "-1.0", "false"}
+
+
+def map_aggressor_side(series: pd.Series) -> np.ndarray:
+    raw = series.astype(str).str.strip().str.lower()
+    return np.where(raw.isin(_BUY_TOKENS), 1.0, np.where(raw.isin(_SELL_TOKENS), -1.0, np.nan))
+
+
 def normalize_price(series: pd.Series) -> pd.Series:
     s = pd.to_numeric(series, errors="coerce")
     s_nonnull = s.dropna()
@@ -152,12 +164,7 @@ def prepare_trades(df: pd.DataFrame, mbp_state: Optional[pd.DataFrame] = None) -
     df["size"] = pd.to_numeric(df[size_col], errors="coerce")
 
     if side_col is not None:
-        raw = df[side_col].astype(str).str.lower()
-        side = np.where(
-            raw.str.contains("buy|bid|b|1|true"), 1,
-            np.where(raw.str.contains("sell|ask|s|-1|false"), -1, np.nan)
-        )
-        df["trade_sign"] = side
+        df["trade_sign"] = map_aggressor_side(df[side_col])
     else:
         df["trade_sign"] = np.nan
 
