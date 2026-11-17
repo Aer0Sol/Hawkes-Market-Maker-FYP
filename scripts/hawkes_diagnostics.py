@@ -87,6 +87,43 @@ def fit_discrete(yb: np.ndarray, ys: np.ndarray, cross: bool = True) -> dict:
             "message": str(res.message), "n_free": 7 if cross else 5, **stability(p)}
 
 
+def tv_intensities(params: np.ndarray, yb: np.ndarray, ys: np.ndarray, block: np.ndarray, K: int):
+    """Same recursion with a time-of-day baseline: mu_b[block[t]], mu_s[block[t]] (K blocks)."""
+    mu_b, mu_s = params[:K][block], params[K:2 * K][block]
+    a_bb, a_bs, a_ss, a_sb, beta = params[2 * K:]
+    xb = mu_b.copy()
+    xs = mu_s.copy()
+    xb[1:] += a_bb * yb[:-1] + a_bs * ys[:-1]
+    xs[1:] += a_ss * ys[:-1] + a_sb * yb[:-1]
+    lam_b = signal.lfilter([1.0], [1.0, -beta], xb)
+    lam_s = signal.lfilter([1.0], [1.0, -beta], xs)
+    return np.maximum(lam_b, 1e-8), np.maximum(lam_s, 1e-8)
+
+
+def fit_discrete_tv(yb: np.ndarray, ys: np.ndarray, block: np.ndarray) -> dict:
+    """Discrete Hawkes with a piecewise-constant baseline per time-of-day block (2K + 5 parameters).
+
+    A constant baseline cannot follow intraday seasonality, so the constant fit reads busy periods
+    as self-excitation; this fit gives the seasonality its own parameters.
+    """
+    K = int(block.max()) + 1
+    mb = np.array([max(yb[block == k].mean() * 0.5, 1e-3) for k in range(K)])
+    ms = np.array([max(ys[block == k].mean() * 0.5, 1e-3) for k in range(K)])
+    x0 = np.concatenate([mb, ms, [0.10, 0.03, 0.10, 0.03, 0.60]])
+    bounds = [(1e-6, 50.0)] * (2 * K) + [(0.0, 5.0)] * 4 + [(0.0, 0.999)]
+
+    def nll(p):
+        lb, ls = tv_intensities(p, yb, ys, block, K)
+        return -(poisson_loglik(yb, lb) + poisson_loglik(ys, ls))
+
+    res = optimize.minimize(nll, x0, method="L-BFGS-B", bounds=bounds, options={"maxiter": 2000})
+    p = res.x
+    core = np.concatenate([[p[:K].mean(), p[K:2 * K].mean()], p[2 * K:]])
+    return {"x": p, "K": K, "loglik": -float(res.fun), "n_free": 2 * K + 5, "success": bool(res.success),
+            "alpha_beta": dict(zip(PARAM_NAMES[2:], map(float, p[2 * K:]))),
+            "mu_buy_by_block": p[:K].tolist(), "mu_sell_by_block": p[K:2 * K].tolist(), **stability(core)}
+
+
 def stability(p: np.ndarray) -> dict:
     """Companion matrix beta*I + alpha (one-step mean dynamics) and branching matrix alpha / (1 - beta)."""
     alpha = np.array([[p[2], p[3]], [p[5], p[4]]])  # rows: target (buy, sell); cols: source (buy, sell)
@@ -298,6 +335,23 @@ def main() -> None:
                          "success": f["success"]})
     win_df = pd.DataFrame(win_rows)
     win_df.to_csv(OUTDIR / "subwindow_params.csv", index=False)
+
+    # 6b. time-of-day baseline (30-minute blocks)
+    block = ((counts["ts"] - session_start).dt.total_seconds().to_numpy() // 1800).astype(int)
+    tv = fit_discrete_tv(yb, ys, block)
+    out["time_varying_baseline"] = {
+        "block_minutes": 30, "n_blocks": tv["K"], "loglik": tv["loglik"], "n_free": tv["n_free"],
+        "aic": 2 * tv["n_free"] - 2 * tv["loglik"], "bic": tv["n_free"] * np.log(n_obs) - 2 * tv["loglik"],
+        "lr_vs_constant_baseline": 2 * (tv["loglik"] - full["loglik"]),
+        "alpha_beta": tv["alpha_beta"], "spectral_radius_branching": tv["spectral_radius_branching"],
+        "spectral_radius_companion": tv["spectral_radius_companion"], "half_life_buckets": tv["half_life_buckets"],
+        "constant_baseline_branching": full["spectral_radius_branching"], "success": tv["success"]}
+    pd.DataFrame({"block": range(tv["K"]), "start": [str(session_start + pd.Timedelta(minutes=30 * k))
+                                                      for k in range(tv["K"])],
+                  "mu_buy": tv["mu_buy_by_block"], "mu_sell": tv["mu_sell_by_block"],
+                  "buy_rate_per_s": [float(yb[block == k].mean()) for k in range(tv["K"])],
+                  "sell_rate_per_s": [float(ys[block == k].mean()) for k in range(tv["K"])]}
+                 ).to_csv(OUTDIR / "time_of_day_baseline.csv", index=False)
 
     # 7. continuous time
     times, types, n_collapsed = event_stream(trades, session_start)
@@ -512,11 +566,30 @@ def write_report(out: dict, width_df: pd.DataFrame, win_df: pd.DataFrame) -> Non
              f"all below the full-day value of {rho_full:.2f}. The trade rate also changes "
              f"({win_df['buy_rate_per_s'].min():.1f}–{win_df['buy_rate_per_s'].max():.1f} buys/s, highest in the "
              "block containing the open). A constant baseline μ cannot follow that intraday seasonality, so the "
-             "full-day fit attributes part of it to self-excitation and is **biased toward criticality**. A "
-             "time-varying baseline would be the fix.\n")
+             "full-day fit attributes part of it to self-excitation and is **biased toward criticality**.\n")
+    tvb = out["time_varying_baseline"]
+    mc = out["model_comparison"]["hawkes_full"]
+    L.append("### 5b. Time-of-day baseline\n")
+    L.append(f"The fix is a baseline that follows the clock: one μ per side for each of {tvb['n_blocks']} "
+             f"{tvb['block_minutes']}-minute blocks, with the excitation α and the decay β still shared "
+             f"({tvb['n_free']} parameters; profile in `output/hawkes_diagnostics/time_of_day_baseline.csv`).\n")
+    L.append("| baseline | free params | loglik | AIC | branching ratio | companion radius | half-life (s) |")
+    L.append("|---|---:|---:|---:|---:|---:|---:|")
+    L.append(f"| constant | 7 | {mc['loglik']:.1f} | {mc['aic']:.1f} | {tvb['constant_baseline_branching']:.3f} | "
+             f"{out['stability_full']['spectral_radius_companion']:.3f} | "
+             f"{out['stability_full']['half_life_buckets']:.1f} |")
+    L.append(f"| time of day | {tvb['n_free']} | {tvb['loglik']:.1f} | {tvb['aic']:.1f} | "
+             f"{tvb['spectral_radius_branching']:.3f} | {tvb['spectral_radius_companion']:.3f} | "
+             f"{tvb['half_life_buckets']:.1f} |")
+    L.append("")
+    L.append(f"**Finding:** the time-of-day baseline improves the quasi-likelihood by LR = "
+             f"{tvb['lr_vs_constant_baseline']:.1f} and moves the branching ratio from "
+             f"{tvb['constant_baseline_branching']:.2f} to {tvb['spectral_radius_branching']:.2f}. The difference is "
+             "the part of the constant-baseline 'excitation' that was really intraday seasonality.\n")
     L.append("Step 2 also fits the parameters **on the whole day and then uses the intensities in-sample**. That is "
-             "look-ahead in the parameters, though not in the recursion itself. A walk-forward fit (calibrate on "
-             "a past window, apply to the next) is needed before any out-of-sample claim.\n")
+             "look-ahead in the parameters, though not in the recursion itself. `scripts/step2b_causal_features.py` "
+             "now provides walk-forward, one-step-ahead intensities for the engine, and steps 5–6 refit per "
+             "training window.\n")
     L.append("## 6. Exact continuous-time fit and time-rescaling goodness of fit\n")
     L.append(f"Event times come from `trades_labeled.parquet`. {cont['n_trades_collapsed_same_ts_sign']:,} trades that share "
              "a nanosecond timestamp and side with another trade were collapsed into one event (one aggressive "
@@ -565,8 +638,10 @@ def write_report(out: dict, width_df: pd.DataFrame, win_df: pd.DataFrame) -> Non
              "interactions.")
     L.append("- No parameter uncertainty is reported yet (bootstrap or observed information). Power-law kernels were not "
              "fitted; sums of up to three exponentials stand in for them.")
-    L.append("- The parameters are estimated on the same day the engine trades. Hawkes features used in the engine "
-             "are in-sample.")
+    L.append("- The descriptive fits here use the whole day. The engine's corrected comparison (step 4b) and the "
+             "prediction tests (steps 5–6) use walk-forward fits instead.")
+    L.append("- The time-of-day profile is estimated on the same day it describes. With one day it cannot be "
+             "separated from that day's news flow; a multi-day profile needs more days.")
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text("\n".join(L) + "\n")
 

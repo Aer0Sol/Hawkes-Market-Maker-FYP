@@ -37,3 +37,20 @@ Steps 1–2 outputs derived from this one day are committed under
 `output/step1_features/` and `output/step2_hawkes/`, so `make all` runs the
 engine and analysis without raw data. `make features` and `make hawkes`
 fail with a pointer to this file.
+
+## Binance data (step 6, cross-asset validation)
+
+`data/binance/` holds Binance aggTrades CSVs used by `scripts/step6_binance_validation.py`
+(BTCUSDT, 2024-06-03 to 2024-06-09, about 75 MB per day). Unlike the Databento data above, this
+is **public and free, no API key**: `scripts/download_binance.py` fetches it from
+`data.binance.vision`. It is still gitignored (large, and regenerable): run `make download-binance`.
+
+**Holdout.** `config/holdout.json` records BTCUSDT 2024-07-01 to 2024-07-07 as the final holdout.
+The download and step 6 scripts refuse those dates unless `--allow-holdout` is passed. Use it
+once, at the end, with the frozen configuration recorded in that file.
+
+## Live recordings
+
+`make live` records what it sees under `data/live/<UTC date>/`:
+`aggTrades.csv` in Binance's historical format (step 6 can read it) and `buckets_1s.csv` with
+the best bid and ask each second, which the historical files lack. Gitignored like the rest.

@@ -363,6 +363,24 @@ Tasks:
 
 Acceptance: a multi-day paper-trading run with logs, a reconciliation report (paper fills vs simulator-predicted fills), and a failure-injection test report (feed drop, venue reject storm, clock skew). **Stop here** unless the user explicitly decides otherwise.
 
+#### 8a. Live paper market maker on Binance BTCUSDT (option 2)  `[next after the review; paper only]`
+
+Context: the live monitor (`scripts/live_monitor.py`, `make live`) already streams BTCUSDT trades and best bid/ask, rebuilds the step 6 features each second, and runs **option 1**, a paper taker that trades each model's forecast. Option 1 shows the forecasts carry a small gross edge that fees destroy (`scripts/taker_backtest.py`: +$20–21k gross over 6 out-of-sample days on $10k, break-even fee 0.05–0.07 bp against a 10 bp standard taker fee). Option 2 asks the question the project is actually about: does a *market maker* using these signals earn the spread?
+
+Tasks:
+- Add a paper market-maker module to the live monitor. It quotes the Avellaneda–Stoikov bid and ask around the live best bid/ask, using the same quoting code paths as the C++ engine (reservation price, inventory skew, standardised OFI skew and toxicity widen/pull), driven by the live Hawkes or event-time signal.
+- Fill with the **replay rule** from `--fill-model replay`. A live aggressive trade printed through our price fills us in full. Trades at our price first consume the queue ahead, initialised from `bookTicker` size when we join at the touch and carried while our price is unchanged. Partial fills are allowed. No randomness.
+- Track inventory, cash, mark-to-market P&L at mid, fees, markouts (1 s, 10 s) and adverse selection, per signal (baseline / +Hawkes / +event-time) on identical quotes otherwise.
+- Report P&L **with and without fees**, at Binance's standard maker fee and at zero fees (top-tier or market-maker-programme rates). At the standard maker fee (~10 bp), earning a one-cent spread on ~$65k (~0.0015 bp) is impossible. The zero-fee line is the one that tests the strategy.
+- Record quotes and paper fills to `data/live/<date>/` so a session can be replayed offline through the C++ engine's replay venue and reconciled (paper fills vs engine-predicted fills).
+
+Caveats to state on the dashboard and in any write-up:
+- Queue position is approximate: cancellations ahead are not observed, so fills are late (conservative). Joining behind the touch only fills on trade-throughs.
+- No latency: quotes are assumed live as soon as they are computed.
+- A few hours of live P&L is noise; use recorded sessions plus the historical days for any claim.
+
+Acceptance: the paper market maker runs alongside option 1 for at least a full day; a report gives P&L gross and net (standard and zero fees), fill counts, markouts and adverse selection per signal, and a reconciliation of live paper fills against an offline replay of the same recorded session. No real orders: no account, keys or order endpoints (§0.2).
+
 ### Phase 9 — Documentation and write-up  `[CP2 partial, kept current as work lands; CP3 final]`
 
 Tasks:

@@ -85,3 +85,53 @@ That is **not** evidence that Hawkes intensities predict order flow better. Whet
   Raw data, `.env` and the experiment store are gitignored. See `data/README.md` for how to obtain the data.
 - `scripts/benchmark_engine.py` works without GNU `/usr/bin/time` (peak RSS reported as n/a).
 - `step4`/plots: `boxplot(labels=…)` → `tick_labels=…`.
+
+## 6. Second round: evaluation fixes, corrected engine comparison, multi-day data
+
+Each item was found in an audit of the step 4–6 evaluation (see `docs/project_overview.html`, section 6).
+
+**Prediction tests (steps 5–6)**
+
+| # | Problem | Fix |
+|---|---|---|
+| F1 | Hawkes parameters fitted on the whole day, test folds included | Refit on each training window |
+| F2 | Hawkes feature λ<sub>t</sub> was one second staler than the EWMA on the same row | One-step-ahead λ<sub>t+1\|t</sub> (same information as the EWMA) |
+| F3 | Pooled t-test ignored serial correlation and overlapping targets | Diebold–Mariano with Newey–West variance, plus Bonferroni over 4 targets |
+| F4 | Hit rate counted zero returns as misses (48% of AAPL 1 s returns are 0) | Score non-zero targets only |
+| F5 | BTCUSDT priced by bucket VWAP: mechanically autocorrelated returns (lag-1 0.36) | End-of-bucket last trade |
+| F8 | 88% of BTCUSDT's non-zero 1 s moves are a one-tick bid-ask bounce | Hit rates count moves > 1.5 ticks only |
+| O8 | AAPL `trade_imbalance` built from step 1's legacy labels | Rebuilt from the corrected labels |
+
+**Engine comparison (step 4b; step 4 is kept unchanged for reference)**
+
+| # | Problem | Fix |
+|---|---|---|
+| O1 | Engine read full-day, stale Hawkes intensities | `scripts/step2b_causal_features.py`: refit every 30 min on past data, one-step-ahead |
+| O2 | One ±0.2 threshold for OFI signals with sd 0.10 and 0.21 | `--ofi-standardize`: causal z-score scaled to sd 0.2 |
+| O3, O5, O9 | Hawkes intensity set its own fill rate; no queue; hand-set queue haircuts | `--fill-model replay`: fills from the next second's real trades, FIFO queue at the touch, partial fills, no RNG; `--pressure-source ewma` for the parametric check |
+
+New engine flags default to the old behaviour; the default output is bit-for-bit identical (tested).
+
+**Calibration and data**
+
+- O6: time-of-day baseline μ (`hawkes_diagnostics.fit_discrete_tv`). AAPL branching 0.83 → 0.46, half-life 11.6 → 3.7 s.
+- O7: event-time multi-scale features (0.1 / 1 / 10 s half-lives) from trade timestamps.
+- O4: seven BTCUSDT days with within-day and cross-day (train d−1, test d) tests; holdout week 2024-07-01 to 07-07
+  recorded in `config/holdout.json` and enforced by the scripts.
+
+**Results, before → after**
+
+| | Before | After |
+|---|---|---|
+| AAPL market maker, calibrated | +$260/day, Hawkes +46 [23, 70] | −$931/day, Hawkes +47 [−26, 120] |
+| OFI quoting rules | lose money | save +$115 to +$285 |
+| BTCUSDT prediction | one day, "3 of 4 targets robust" | 7 days: event-time flow forecast better 6/6 days (p = 0.0006); return gains 1–3 pp, not Bonferroni-significant across days |
+
+**Live monitor.** `scripts/live_monitor.py` + `live_dashboard.html` (`make live`): streams Binance BTCUSDT, rebuilds the
+step 6 features each second (a test asserts they equal the offline ones), scores the models live, records to
+`data/live/`. Optional dependency group `live` (`websockets==15.0.1`).
+
+**Paper P&L, option 1** (`scripts/taker_backtest.py`, live dashboard panel). Trading each 1 s forecast with $10k
+long/short over 6 out-of-sample BTCUSDT days: +$20,000 (baseline), +$21,202 (+Hawkes), +$21,197 (+event-time) gross;
+−$3.2M to −$4.1M at the standard 10 bp taker fee; break-even fees 0.048 / 0.067 / 0.057 bp. Option 2 (paper market
+maker with replay fills) is planned in plan.md §8a.

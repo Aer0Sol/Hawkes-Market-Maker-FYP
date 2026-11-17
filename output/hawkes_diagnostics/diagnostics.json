@@ -95,6 +95,27 @@
     ],
     "half_life_buckets": 11.587767463370215
   },
+  "time_varying_baseline": {
+    "block_minutes": 30,
+    "n_blocks": 13,
+    "loglik": 77826.80666372515,
+    "n_free": 31,
+    "aic": -155591.6133274503,
+    "bic": -155320.25053451123,
+    "lr_vs_constant_baseline": 4149.667098099773,
+    "alpha_beta": {
+      "alpha_bb": 0.07223123165862005,
+      "alpha_bs": 0.027975703292844708,
+      "alpha_ss": 0.03514614079935086,
+      "alpha_sb": 0.008979755056942497,
+      "beta": 0.8290957393769983
+    },
+    "spectral_radius_branching": 0.4568765415381364,
+    "spectral_radius_companion": 0.9071778869045677,
+    "half_life_buckets": 3.698369981276559,
+    "constant_baseline_branching": 0.8312656963440189,
+    "success": true
+  },
   "continuous": {
     "n_events": 96494,
     "n_trades_collapsed_same_ts_sign": 68428,
@@ -308,5 +329,5 @@
     "aic_exp2": -624908.7104662361,
     "aic_exp3": -647168.5433396561
   },
-  "runtime_s": 34.02037692070007
+  "runtime_s": 41.76735472679138
 }

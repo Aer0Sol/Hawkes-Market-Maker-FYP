@@ -1,0 +1,17 @@
+{
+  "declared_on": "2026-11-17",
+  "declared_at_commit": "be60fe61895b2276decf65d8244b751703d7d303 (plus uncommitted step 2b/4b/5/6 work on branch repo-improvements)",
+  "rule": "These dates are never downloaded, inspected or evaluated before the final frozen evaluation (plan.md CP3). Evaluate them exactly once, with the configuration frozen below, and report the result as is. scripts/download_binance.py and scripts/step6_binance_validation.py refuse them unless --allow-holdout is passed.",
+  "binance": {
+    "BTCUSDT": ["2024-07-01", "2024-07-02", "2024-07-03", "2024-07-04", "2024-07-05", "2024-07-06", "2024-07-07"]
+  },
+  "aapl": "No untouched AAPL data exists: the only AAPL day (2024-06-03) has been used throughout. An AAPL holdout needs a new Databento purchase (ask the project owner first).",
+  "frozen_evaluation": {
+    "script": "scripts/step6_binance_validation.py --dates <holdout dates> --allow-holdout",
+    "models": ["baseline_ewma", "with_hawkes", "event_time"],
+    "targets": ["future_ret_1s", "future_ret_5s", "future_ret_10s", "future_ofi_1s"],
+    "walk_forward": {"n_folds": 5, "warmup_frac": 0.2, "ridge_alpha": 1.0, "hawkes_refit": "per training window, one-step-ahead"},
+    "cross_day": "train on day d-1, test on day d",
+    "decision_rule": "Bonferroni p < 0.0125 per instrument (4 targets); a claim needs both the fold-level t-test and the Diebold-Mariano HAC test, or the cross-day t-test across days."
+  }
+}

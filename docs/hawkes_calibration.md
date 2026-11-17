@@ -77,9 +77,20 @@ Note: in this discrete parameterisation the branching ratio is α/(1−β), not 
 | 3 | 16:45:00 | 0.3140 | 0.2887 | 0.0408 | 0.0118 | 0.0310 | 0.0000 | 0.8270 | 0.2361 | 2.5538 |
 | 4 | 18:22:30 | 0.0353 | 0.0702 | 0.0357 | 0.0293 | 0.0260 | 0.0060 | 0.9403 | 0.7533 | 3.5381 |
 
-**Finding:** the parameters move a lot across the day. The per-window branching ratio ranges from 0.24 to 0.75, all below the full-day value of 0.83. The trade rate also changes (2.6–7.8 buys/s, highest in the block containing the open). A constant baseline μ cannot follow that intraday seasonality, so the full-day fit attributes part of it to self-excitation and is **biased toward criticality**. A time-varying baseline would be the fix.
+**Finding:** the parameters move a lot across the day. The per-window branching ratio ranges from 0.24 to 0.75, all below the full-day value of 0.83. The trade rate also changes (2.6–7.8 buys/s, highest in the block containing the open). A constant baseline μ cannot follow that intraday seasonality, so the full-day fit attributes part of it to self-excitation and is **biased toward criticality**.
 
-Step 2 also fits the parameters **on the whole day and then uses the intensities in-sample**. That is look-ahead in the parameters, though not in the recursion itself. A walk-forward fit (calibrate on a past window, apply to the next) is needed before any out-of-sample claim.
+### 5b. Time-of-day baseline
+
+The fix is a baseline that follows the clock: one μ per side for each of 13 30-minute blocks, with the excitation α and the decay β still shared (31 parameters; profile in `output/hawkes_diagnostics/time_of_day_baseline.csv`).
+
+| baseline | free params | loglik | AIC | branching ratio | companion radius | half-life (s) |
+|---|---:|---:|---:|---:|---:|---:|
+| constant | 7 | 75752.0 | -151489.9 | 0.831 | 0.990 | 11.6 |
+| time of day | 31 | 77826.8 | -155591.6 | 0.457 | 0.907 | 3.7 |
+
+**Finding:** the time-of-day baseline improves the quasi-likelihood by LR = 4149.7 and moves the branching ratio from 0.83 to 0.46. The difference is the part of the constant-baseline 'excitation' that was really intraday seasonality.
+
+Step 2 also fits the parameters **on the whole day and then uses the intensities in-sample**. That is look-ahead in the parameters, though not in the recursion itself. `scripts/step2b_causal_features.py` now provides walk-forward, one-step-ahead intensities for the engine, and steps 5–6 refit per training window.
 
 ## 6. Exact continuous-time fit and time-rescaling goodness of fit
 
@@ -113,4 +124,5 @@ The discrete fit implies a decay of 0.0598/s (half-life 11.6 s) and a branching 
 - Trade signs come from Lee–Ready against 1-second quotes (see README, *Changes*, on the look-ahead fix to the labelling). Sign errors bias cross-excitation upward.
 - The quasi-MLE ignores within-bucket timing, and the shared β forces one time scale on all four interactions.
 - No parameter uncertainty is reported yet (bootstrap or observed information). Power-law kernels were not fitted; sums of up to three exponentials stand in for them.
-- The parameters are estimated on the same day the engine trades. Hawkes features used in the engine are in-sample.
+- The descriptive fits here use the whole day. The engine's corrected comparison (step 4b) and the prediction tests (steps 5–6) use walk-forward fits instead.
+- The time-of-day profile is estimated on the same day it describes. With one day it cannot be separated from that day's news flow; a multi-day profile needs more days.

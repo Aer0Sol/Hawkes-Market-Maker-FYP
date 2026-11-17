@@ -1,0 +1,760 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hawkes Market Maker</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=STIX+Two+Text:ital,wght@0,400;1,400&family=Space+Grotesk:wght@500;600;700&display=swap">
+<style>
+/* Layout: technical dossier. A sticky contents rail beside one reading column; equations, tables and figures sit in the column, wide tables scroll inside their own box. */
+:root {
+  --paper: #f6f8fa;
+  --panel: #ffffff;
+  --ink: #16202b;
+  --muted: #586474;
+  --rule: #d9e0e7;
+  --accent: #0d5f7a;
+  --accent-soft: #e2eff4;
+  --buy: #1d7552;
+  --sell: #b0412b;
+  --ok: #1d7552;
+  --ok-soft: #e0f1e9;
+  --warn: #8a5a00;
+  --warn-soft: #f8edd5;
+  --bad: #a3331f;
+  --bad-soft: #f8e3dd;
+  --null: #586474;
+  --null-soft: #e9edf1;
+  --font-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --font-math: "STIX Two Text", "Cambria Math", "Times New Roman", serif;
+  --measure: 70ch;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0f141a; --panel: #151c24; --ink: #e2e8ee; --muted: #97a3b1; --rule: #273241;
+    --accent: #63b6d2; --accent-soft: #15303b; --buy: #5cc39b; --sell: #ea8a72;
+    --ok: #6fd0a8; --ok-soft: #14322a; --warn: #e6b45a; --warn-soft: #362a12;
+    --bad: #f08f7a; --bad-soft: #3a1d17; --null: #a8b3c0; --null-soft: #222b36;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0f141a; --panel: #151c24; --ink: #e2e8ee; --muted: #97a3b1; --rule: #273241;
+  --accent: #63b6d2; --accent-soft: #15303b; --buy: #5cc39b; --sell: #ea8a72;
+  --ok: #6fd0a8; --ok-soft: #14322a; --warn: #e6b45a; --warn-soft: #362a12;
+  --bad: #f08f7a; --bad-soft: #3a1d17; --null: #a8b3c0; --null-soft: #222b36;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 16px/1.62 var(--font-body);
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+img { max-width: 100%; height: auto; display: block; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+
+.shell {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 48px;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding-block: 40px 96px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+nav.toc {
+  position: sticky;
+  top: calc(24px + env(safe-area-inset-top, 0px));
+  align-self: start;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+nav.toc .label {
+  font: 600 11px/1 var(--font-display);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+nav.toc ol ol { padding-left: 12px; margin-top: 2px; }
+nav.toc a { color: var(--muted); text-decoration: none; display: block; padding: 3px 0; }
+nav.toc a:hover { color: var(--ink); }
+nav.toc .num { font-family: var(--font-mono); font-size: 11.5px; color: var(--accent); margin-right: 6px; }
+
+main { min-width: 0; }
+main > section { max-width: var(--measure); margin-bottom: 72px; scroll-margin-top: 24px; }
+main > section.wide { max-width: 100%; }
+main > section.wide > p, main > section.wide > h2, main > section.wide > h3, main > section.wide > ul,
+main > section.wide > .lede { max-width: var(--measure); }
+
+header.masthead { max-width: var(--measure); margin-bottom: 56px; }
+.eyebrow {
+  font: 600 12px/1 var(--font-display);
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin: 0 0 14px;
+}
+h1, h2, h3, h4 { font-family: var(--font-display); text-wrap: balance; color: var(--ink); }
+h1 { font-size: clamp(34px, 6vw, 52px); line-height: 1.05; font-weight: 700; letter-spacing: -.02em; margin: 0 0 18px; }
+h2 { font-size: 27px; line-height: 1.2; font-weight: 600; margin: 0 0 18px; letter-spacing: -.01em; }
+h2 .num { font-family: var(--font-mono); font-size: 15px; font-weight: 500; color: var(--accent); margin-right: 10px; vertical-align: 3px; }
+h3 { font-size: 19px; line-height: 1.3; font-weight: 600; margin: 40px 0 10px; }
+h4 { font-size: 15.5px; font-weight: 600; margin: 24px 0 6px; }
+p, ul, ol { margin: 0 0 14px; }
+ul, ol { padding-left: 22px; }
+li { margin-bottom: 6px; }
+.lede { font-size: 18.5px; line-height: 1.55; color: var(--ink); }
+.muted { color: var(--muted); }
+strong { font-weight: 600; }
+code, .mono { font-family: var(--font-mono); font-size: .88em; }
+code { background: var(--null-soft); padding: 1px 5px; border-radius: 3px; overflow-wrap: anywhere; }
+
+.meta { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 13.5px; color: var(--muted); margin-top: 20px; }
+.meta span b { color: var(--ink); font-weight: 500; }
+
+/* Answer-first findings */
+.findings { display: grid; gap: 0; border-top: 1px solid var(--rule); margin: 22px 0 8px; }
+.finding { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 18px; padding: 18px 0; border-bottom: 1px solid var(--rule); }
+.finding .tag { font: 600 12px/1.3 var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding-top: 3px; }
+.finding p { margin: 0; }
+.finding p + p { margin-top: 8px; }
+
+/* Equations */
+.eq {
+  font-family: var(--font-math);
+  font-size: 19px;
+  line-height: 1.6;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 14px 18px;
+  margin: 14px 0 16px;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.eq .row + .row { margin-top: 4px; }
+.eq i, .m i { font-style: italic; }
+.eq .note { font-family: var(--font-body); font-size: 13px; color: var(--muted); margin-left: 14px; white-space: normal; }
+.m { font-family: var(--font-math); font-size: 1.08em; white-space: nowrap; }
+sub, sup { font-size: .68em; line-height: 0; }
+
+/* Callouts */
+.callout { border-left: 3px solid var(--accent); background: var(--accent-soft); padding: 12px 16px; border-radius: 0 6px 6px 0; margin: 18px 0; }
+.callout.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+.callout p:last-child { margin-bottom: 0; }
+.callout .k { font: 600 12px/1 var(--font-display); letter-spacing: .1em; text-transform: uppercase; display: block; margin-bottom: 6px; color: var(--accent); }
+.callout.warn .k { color: var(--warn); }
+
+/* Tables */
+.tbl { overflow-x: auto; margin: 16px 0 20px; border: 1px solid var(--rule); border-radius: 6px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; line-height: 1.45; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font: 600 12px/1.3 var(--font-display); letter-spacing: .04em; color: var(--muted); background: var(--paper); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-mono); font-size: 13px; white-space: nowrap; }
+td.group { font-weight: 600; background: var(--paper); font-size: 13px; }
+caption { caption-side: bottom; text-align: left; font-size: 12.5px; color: var(--muted); padding: 8px 12px 10px; }
+
+/* Verdict / severity chips */
+.chip { display: inline-block; font: 600 11.5px/1 var(--font-display); letter-spacing: .03em; padding: 4px 8px; border-radius: 99px; white-space: nowrap; }
+.chip.robust { color: var(--ok); background: var(--ok-soft); }
+.chip.suggest { color: var(--warn); background: var(--warn-soft); }
+.chip.null { color: var(--null); background: var(--null-soft); }
+.chip.worse { color: var(--bad); background: var(--bad-soft); }
+.chip.high { color: var(--bad); background: var(--bad-soft); }
+.chip.med { color: var(--warn); background: var(--warn-soft); }
+.chip.low { color: var(--null); background: var(--null-soft); }
+.chip.fixed { color: var(--ok); background: var(--ok-soft); }
+.buy { color: var(--buy); font-weight: 600; }
+.sell { color: var(--sell); font-weight: 600; }
+
+/* Pipeline */
+.pipeline { list-style: none; padding: 0; margin: 18px 0; display: grid; gap: 0; border-left: 2px solid var(--rule); }
+.pipeline li { position: relative; padding: 0 0 18px 22px; margin: 0; }
+.pipeline li::before { content: ""; position: absolute; left: -7px; top: 6px; width: 12px; height: 12px; border-radius: 50%; background: var(--paper); border: 2px solid var(--accent); }
+.pipeline .step { font: 600 15.5px/1.3 var(--font-display); }
+.pipeline .step .mono { color: var(--accent); font-size: 12.5px; margin-right: 8px; }
+.pipeline p { margin: 4px 0 0; font-size: 14.5px; }
+.pipeline .io { font-family: var(--font-mono); font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+
+/* Figures */
+figure { margin: 20px 0 26px; }
+figure img { border: 1px solid var(--rule); border-radius: 6px; background: #fff; }
+figcaption { font-size: 13px; color: var(--muted); margin-top: 8px; }
+.figs { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+.figs figure { margin: 0; }
+
+/* Demo options */
+.options { display: grid; gap: 14px; margin: 18px 0; }
+.option { border: 1px solid var(--rule); background: var(--panel); border-radius: 8px; padding: 16px 18px; }
+.option.rec { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.option h4 { margin: 0 0 6px; display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.option dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 10px 0 0; font-size: 14px; }
+.option dt { color: var(--muted); }
+.option dd { margin: 0; }
+
+pre.cmd { font-family: var(--font-mono); font-size: 13px; line-height: 1.6; background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; overflow-x: auto; margin: 12px 0 18px; }
+pre.cmd .c { color: var(--muted); }
+
+dl.gloss { display: grid; grid-template-columns: minmax(120px, max-content) minmax(0, 1fr); gap: 8px 18px; margin: 12px 0; }
+dl.gloss dt { font-family: var(--font-mono); font-size: 13.5px; color: var(--accent); }
+dl.gloss dd { margin: 0; font-size: 15px; }
+
+footer { max-width: var(--measure); font-size: 13px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 16px; }
+
+@media (max-width: 900px) {
+  .shell { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-block: 24px 64px; }
+  nav.toc { position: static; max-height: none; border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; background: var(--panel); }
+  nav.toc ol ol { display: none; }
+}
+@media (max-width: 560px) {
+  .finding { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  dl.gloss { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  dl.gloss dd { margin-bottom: 10px; }
+  .option dl { grid-template-columns: minmax(0, 1fr); }
+  .option dd { margin-bottom: 6px; }
+  .eq { font-size: 17px; }
+}
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+</head>
+<body>
+<div class="shell">
+
+<nav class="toc" aria-label="Contents">
+  <div class="label">Contents</div>
+  <ol>
+    <li><a href="#summary"><span class="num">1</span>Summary</a></li>
+    <li><a href="#data"><span class="num">2</span>Data</a></li>
+    <li><a href="#pipeline"><span class="num">3</span>Pipeline</a></li>
+    <li><a href="#primitives"><span class="num">4</span>Primitives</a>
+      <ol>
+        <li><a href="#book">4.1 Book features</a></li>
+        <li><a href="#signing">4.2 Signing trades</a></li>
+        <li><a href="#hawkes">4.3 Hawkes processes</a></li>
+        <li><a href="#discrete">4.4 The fitted model</a></li>
+        <li><a href="#ewma">4.5 EWMA baseline</a></li>
+        <li><a href="#as">4.6 Avellaneda–Stoikov</a></li>
+        <li><a href="#engine">4.7 Engine extensions</a></li>
+        <li><a href="#fills">4.8 Fill model</a></li>
+        <li><a href="#accounting">4.9 Accounting</a></li>
+        <li><a href="#evaluation">4.10 Evaluation</a></li>
+      </ol>
+    </li>
+    <li><a href="#results"><span class="num">5</span>Results</a>
+      <ol>
+        <li><a href="#res-calib">5.1 Hawkes calibration</a></li>
+        <li><a href="#res-fill">5.2 Fill calibration</a></li>
+        <li><a href="#res-engine">5.3 Simulator</a></li>
+        <li><a href="#res-oos">5.4 Out-of-sample</a></li>
+        <li><a href="#res-bench">5.5 Benchmark</a></li>
+      </ol>
+    </li>
+    <li><a href="#gaps"><span class="num">6</span>Gaps audit</a></li>
+    <li><a href="#demo"><span class="num">7</span>Live demo</a></li>
+    <li><a href="#reproduce"><span class="num">8</span>Reproduce</a></li>
+    <li><a href="#glossary"><span class="num">9</span>Glossary</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<header class="masthead">
+  <p class="eyebrow">Project dossier · AAPL &amp; BTCUSDT · 1-second order flow</p>
+  <h1>Hawkes Market Maker</h1>
+  <p class="lede">A bivariate Hawkes model of buy and sell trade arrivals, used as an order-flow signal inside an Avellaneda–Stoikov market maker written in C++, and tested against a plain moving-average (EWMA) baseline. This page explains every moving part from first principles, reports what the evidence does and does not support, lists the gaps found and fixed, and describes the live demo.</p>
+  <div class="meta">
+    <span>Branch <b>repo-improvements</b></span>
+    <span>As of <b>2026-11-17</b> (includes uncommitted work)</span>
+    <span>Tests <b>41 passing</b></span>
+    <span>Scope <b>simulation and paper only, no live orders</b></span>
+  </div>
+</header>
+
+<!-- ============================================================ 1 -->
+<section id="summary">
+  <h2><span class="num">1</span>Summary</h2>
+  <p><strong>The question:</strong> do Hawkes intensities, which model how trades trigger further trades, carry information about short-horizon order flow and prices that a simple EWMA of trade counts does not? And does that information help a market maker?</p>
+
+  <div class="findings">
+    <div class="finding">
+      <div class="tag">Clustering</div>
+      <div>
+        <p><strong>Trade arrivals cluster strongly, but much of the 1 s "excitation" is seasonality.</strong> On AAPL the Hawkes model beats a Poisson null by a quasi-likelihood ratio of 60,428. Its full-day branching ratio of 0.83 falls to 0.46 once the baseline follows the time of day. BTCUSDT behaves the same way (0.58–0.87, falling to 0.44–0.74). The strongest excitation is sub-millisecond, and the time-rescaling test rejects every kernel tried.</p>
+      </div>
+    </div>
+    <div class="finding">
+      <div class="tag">Market maker</div>
+      <div>
+        <p><strong>With fills replayed from real trades, the strategy loses money and Hawkes makes no difference.</strong> On AAPL it loses $930–1,800/day, and Hawkes minus baseline is +$47, CI [−26, 120]. The original $5–11k/day, and Hawkes's apparent edge, came from a parametric fill model that never charges for adverse selection. The OFI protection rules, which looked harmful under that model, actually help (+$115 to +$285).</p>
+      </div>
+    </div>
+    <div class="finding">
+      <div class="tag">Prediction</div>
+      <div>
+        <p><strong>Null on AAPL; small, consistent gains on a week of BTCUSDT.</strong> Trained on one day and tested on the next, event-time Hawkes features beat the EWMA baseline at forecasting next-second order flow on 6 of 6 days (p = 0.0006), and on 15 of 18 day×horizon return tests. The 1 s Hawkes features win 13 of 18. Gains are 1–3 percentage points of hit rate before costs.</p>
+      </div>
+    </div>
+    <div class="finding">
+      <div class="tag">For the panel</div>
+      <div>
+        <p>We tested the claims ourselves and fixed what the tests exposed. Hawkes is a real, modest order-flow signal on a liquid 24-hour market. Its event-time form is more useful than the 1 s model. It does not make the current market maker profitable. The demo runs the same models live on Binance.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <span class="k">Every number here is after the fixes</span>
+    <p><a href="#gaps">Section 6</a> lists the problems found and fixed. Several changed the answer: replaying real trades turned a profitable simulator into a losing one, a time-of-day baseline halved the branching ratio, and filtering out bid-ask bounce removed most of an apparent 8 percentage point gain.</p>
+  </div>
+</section>
+
+<!-- ============================================================ 2 -->
+<section id="data">
+  <h2><span class="num">2</span>Data</h2>
+  <div class="tbl">
+    <table>
+      <thead><tr><th></th><th>AAPL (primary)</th><th>BTCUSDT (cross-asset check)</th></tr></thead>
+      <tbody>
+        <tr><td>Source</td><td>Databento <code>XNAS.ITCH</code>: MBP-10 book and trades (licensed, not committed)</td><td>Binance spot <code>aggTrades</code> from data.binance.vision (public, no key, not committed)</td></tr>
+        <tr><td>Session</td><td>2024-06-03, 09:30–16:00 ET (6.5 h)</td><td>2024-06-03, 00:00–24:00 UTC</td></tr>
+        <tr><td>Events</td><td class="n">164,922 trades</td><td class="n">923,881 aggregated trades</td></tr>
+        <tr><td>1 s rows</td><td class="n">23,400</td><td class="n">86,400</td></tr>
+        <tr><td>Aggressor side</td><td>Exchange flag where present (70,565 trades), else Lee–Ready on past quotes</td><td>Exact: <code>is_buyer_maker</code> on every trade</td></tr>
+        <tr><td>Book</td><td>Top 10 levels, sampled at each bucket's end</td><td>None in the historical file (live <code>bookTicker</code> stream has best bid/ask)</td></tr>
+        <tr><td>Price used</td><td>End-of-bucket midprice</td><td>End-of-bucket last trade (1-cent spread on ~$65k, so bounce ≈ 0.0015 bp)</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>An "event" is not quite the same object on the two venues. A Nasdaq print is one fill, so a single marketable order that sweeps several resting orders produces several prints. A Binance aggTrade merges all fills of one taker order at one price. Binance events are therefore closer to <em>orders</em>, AAPL events closer to <em>fills</em>. This changes what self-excitation means and is one reason the two branching ratios should not be compared too literally.</p>
+</section>
+
+<!-- ============================================================ 3 -->
+<section id="pipeline">
+  <h2><span class="num">3</span>Pipeline</h2>
+  <p>Steps 1–2 need raw AAPL data; their outputs are committed so everything downstream runs without it. <code>make all</code> runs the engine, diagnostics, sweep, plots and step 5 in about two minutes.</p>
+  <ol class="pipeline">
+    <li><div class="step"><span class="mono">step 1</span>Feature table</div>
+      <p>MBP-10 and trades resampled to 1 s: mid, spread, microprice, L1/L10 imbalance, realized volatility, trade volumes, forward returns.</p>
+      <p class="io">scripts/step1_build_feature_table.py → output/step1_features/</p></li>
+    <li><div class="step"><span class="mono">step 2</span>Trade signs and Hawkes fit</div>
+      <p>Signs each trade, counts buys and sells per second, computes the EWMA intensities and fits the bivariate discrete Hawkes model.</p>
+      <p class="io">scripts/step2_trade_label_and_hawkes.py → output/step2_hawkes/feature_table_step2_1s.csv</p></li>
+    <li><div class="step"><span class="mono">step 2b</span>Causal feature table</div>
+      <p>Walk-forward Hawkes (parameters refitted every 30 min on past data, one-step-ahead intensity), trade imbalance from corrected labels, and a per-second trade file for replay fills.</p>
+      <p class="io">scripts/step2b_causal_features.py → output/step2b_causal/</p></li>
+    <li><div class="step"><span class="mono">step 3</span>C++ quoting engine</div>
+      <p>Replays the table row by row: Avellaneda–Stoikov quotes with OFI and microprice skews, toxicity logic, inventory limit, simulated fills, PnL and markout accounting, per-tick latency.</p>
+      <p class="io">engine/event_driven_mm_engine.cpp → bin/step3_mm → output/step3_engine_cpp/</p></li>
+    <li><div class="step"><span class="mono">step 4</span>Multi-seed sweep</div>
+      <p>24 configurations × 10 seeds, Hawkes vs baseline paired on (A, k, seed), plus an ablation with the OFI signal switched off.</p>
+      <p class="io">scripts/step4_analysis.py, scripts/plot_graphs.py → output/step4_analysis/, plots/</p></li>
+    <li><div class="step"><span class="mono">step 4b</span>Corrected comparison</div>
+      <p>The same question with the confounds removed: replay fills from real trades, causally standardised OFI, walk-forward Hawkes. Deterministic; Newey–West CIs.</p>
+      <p class="io">scripts/step4b_fixed_comparison.py → output/step4b_fixed/</p></li>
+    <li><div class="step"><span class="mono">step 5</span>Out-of-sample prediction (AAPL)</div>
+      <p>Walk-forward ridge regressions with and without the Hawkes features. Hawkes is refitted per training window. Paired tests on squared-error differences.</p>
+      <p class="io">scripts/step5_alpha_signal.py → output/step5_alpha_signal/, docs/alpha_signal.md</p></li>
+    <li><div class="step"><span class="mono">step 6</span>Multi-day check (BTCUSDT)</div>
+      <p>The same fits and tests on seven BTCUSDT days: within each day, and trained on one day, tested on the next. Exports the models for the live monitor.</p>
+      <p class="io">scripts/download_binance.py, scripts/step6_binance_validation.py → docs/binance_validation.md</p></li>
+    <li><div class="step"><span class="mono">live</span>Live monitor</div>
+      <p>Streams Binance BTCUSDT, rebuilds the step 6 features each second, scores the models live, records the stream and serves a dashboard.</p>
+      <p class="io">scripts/live_monitor.py, scripts/live_dashboard.html → http://127.0.0.1:8765</p></li>
+  </ol>
+  <p>Side analyses: <code>scripts/hawkes_diagnostics.py</code> (calibration report), <code>scripts/calibrate_fill_model.py</code> (fill decay <span class="m"><i>k</i></span> from trades), <code>scripts/benchmark_engine.py</code> (throughput).</p>
+</section>
+
+<!-- ============================================================ 4 -->
+<section id="primitives">
+  <h2><span class="num">4</span>Primitives</h2>
+  <p>Each primitive is defined the way the code computes it, with units. Notation: buckets are 1 second, indexed by <span class="m"><i>t</i></span>. Row <span class="m"><i>t</i></span> is labelled by its bucket's start but holds the book as of the bucket's <em>end</em>, so everything on row <span class="m"><i>t</i></span> is known at time <span class="m"><i>t</i> + 1 s</span>. <span class="m"><i>N</i><sup>b</sup><sub><i>t</i></sub>, <i>N</i><sup>s</sup><sub><i>t</i></sub></span> are the buy- and sell-initiated trade counts in bucket <span class="m"><i>t</i></span>.</p>
+
+  <!-- 4.1 -->
+  <h3 id="book">4.1 Book features</h3>
+  <p>From the best bid and ask <span class="m"><i>P</i><sup>b</sup>, <i>P</i><sup>a</sup></span> and their sizes <span class="m"><i>V</i><sup>b</sup>, <i>V</i><sup>a</sup></span>:</p>
+  <div class="eq">
+    <div class="row"><i>m</i> = (<i>P</i><sup>b</sup> + <i>P</i><sup>a</sup>) / 2, &nbsp;&nbsp; <i>s</i> = <i>P</i><sup>a</sup> − <i>P</i><sup>b</sup>, &nbsp;&nbsp; spread_bps = 10<sup>4</sup> · <i>s</i> / <i>m</i></div>
+    <div class="row"><i>p</i><sup>μ</sup> = (<i>P</i><sup>b</sup><i>V</i><sup>a</sup> + <i>P</i><sup>a</sup><i>V</i><sup>b</sup>) / (<i>V</i><sup>b</sup> + <i>V</i><sup>a</sup>), &nbsp;&nbsp; microprice_alpha = <i>p</i><sup>μ</sup> − <i>m</i></div>
+    <div class="row"><i>I</i><sub>1</sub> = (<i>V</i><sup>b</sup> − <i>V</i><sup>a</sup>) / (<i>V</i><sup>b</sup> + <i>V</i><sup>a</sup>), &nbsp;&nbsp; <i>I</i><sub>10</sub> = same with sizes summed over 10 levels</div>
+  </div>
+  <p>The microprice here is the size-weighted mid: it leans toward the side with <em>less</em> resting size, because that side is more likely to be depleted next. It is not Stoikov's (2018) martingale micro-price, which conditions on imbalance and spread states. Imbalance lies in [−1, 1]; positive means more resting bid size.</p>
+  <p><strong>Realized volatility.</strong> <span class="m"><i>r</i><sub><i>t</i></sub> = ln <i>m</i><sub><i>t</i></sub> − ln <i>m</i><sub><i>t</i>−1</sub></span>, and <span class="m">rv_60<sub><i>t</i></sub></span> is the trailing standard deviation of the last 60 one-second log returns. Its unit is <em>per √second, in log-return terms</em> (about 6×10<sup>−5</sup> for AAPL). The engine converts it to dollars, <span class="m"><i>σ</i> = rv_60 · <i>m</i></span>. The original code skipped that conversion, which made the inventory term about 10<sup>−5</sup> dollars and switched inventory control off (gap E4 in <code>docs/changes.md</code>).</p>
+  <p><strong>Forward returns</strong> (targets only, never features): <span class="m">future_ret_<i>h</i>s<sub><i>t</i></sub> = ln <i>m</i><sub><i>t</i>+<i>h</i></sub> − ln <i>m</i><sub><i>t</i></sub></span> for <span class="m"><i>h</i> ∈ {1, 5, 10}</span>. At a 1-cent tick, 48% of AAPL's 1 s returns are exactly zero.</p>
+
+  <!-- 4.2 -->
+  <h3 id="signing">4.2 Signing trades</h3>
+  <p>Order-flow models need to know which side <em>initiated</em> each trade: the aggressor who crossed the spread. Three sources, in priority order:</p>
+  <ol>
+    <li><strong>Exchange flag.</strong> Databento reports the aggressor as <code>B</code>, <code>A</code> or <code>N</code> (unknown). Binance reports <code>is_buyer_maker</code>. If the buyer was resting, a seller hit the bid, so the trade is <span class="sell">sell-initiated</span>; otherwise it is <span class="buy">buy-initiated</span>.</li>
+    <li><strong>Quote rule (Lee–Ready).</strong> Compare the trade price with the prevailing mid. Above is a buy, below is a sell.</li>
+    <li><strong>Tick rule.</strong> At the mid, use the sign of the last price change.</li>
+  </ol>
+  <p>"Prevailing" must mean strictly before the trade. The original code matched each trade to a feature row that held the book as of the bucket's end, up to one second in the future. That look-ahead, plus a regex that mapped <code>A</code> (sell) to unknown, gave labels that agreed with the exchange flag only 53.4% of the time: a coin flip. Fixed labels agree by construction where the flag exists, and 84.2% of quote-rule labels agree with it. Current AAPL buy share: 59.1%.</p>
+
+  <!-- 4.3 -->
+  <h3 id="hawkes">4.3 Hawkes processes</h3>
+  <p>A point process is described by its conditional intensity <span class="m"><i>λ</i>(<i>t</i>)</span>: the instantaneous event rate given the history <span class="m">𝓗<sub><i>t</i></sub></span>, so <span class="m">P(event in [<i>t</i>, <i>t</i>+d<i>t</i>) | 𝓗<sub><i>t</i></sub>) = <i>λ</i>(<i>t</i>) d<i>t</i></span>. A Poisson process has a constant <span class="m"><i>λ</i></span>: arrivals carry no memory. A Hawkes process (Hawkes, 1971) lets each event raise the future rate:</p>
+  <div class="eq">
+    <div class="row"><i>λ</i>(<i>t</i>) = <i>μ</i> + Σ<sub><i>t</i><sub><i>i</i></sub> &lt; <i>t</i></sub> <i>φ</i>(<i>t</i> − <i>t</i><sub><i>i</i></sub>), &nbsp;&nbsp;&nbsp; <i>φ</i>(<i>u</i>) = <i>a</i> <i>ω</i> e<sup>−<i>ω u</i></sup> &nbsp;(exponential kernel)</div>
+  </div>
+  <p><span class="m"><i>μ</i></span> is the exogenous baseline rate. The kernel <span class="m"><i>φ</i></span> is the extra rate one past event contributes. Two consequences matter here:</p>
+  <ul>
+    <li><strong>Branching ratio.</strong> <span class="m"><i>n</i> = ∫<sub>0</sub><sup>∞</sup> <i>φ</i>(<i>u</i>) d<i>u</i></span> (here <span class="m"><i>a</i></span>) is the expected number of direct "children" per event. In the cluster representation, a fraction <span class="m">1 − <i>n</i></span> of events are immigrants arriving at rate <span class="m"><i>μ</i></span> and a fraction <span class="m"><i>n</i></span> are triggered. The process is stationary only if <span class="m"><i>n</i> &lt; 1</span>, and then the mean rate is <span class="m"><i>μ</i> / (1 − <i>n</i>)</span>. Order-flow studies often find <span class="m"><i>n</i></span> close to 1 ("near-criticality").</li>
+    <li><strong>Markov property.</strong> With an exponential kernel, <span class="m">d<i>λ</i> = <i>ω</i>(<i>μ</i> − <i>λ</i>) d<i>t</i> + <i>a ω</i> d<i>N</i></span>. The intensity decays toward <span class="m"><i>μ</i></span> and jumps at each event. The whole history compresses into the current <span class="m"><i>λ</i></span>, which is what makes O(1) online updates, and a tractable state variable for optimal control, possible.</li>
+  </ul>
+  <p><strong>Bivariate.</strong> With buys and sells, <span class="m"><i>φ</i></span> becomes a 2×2 matrix: <span class="m"><i>φ</i><sub>bb</sub></span> (buys trigger buys, as with order splitting and herding), <span class="m"><i>φ</i><sub>sb</sub></span> (buys trigger sells, as with liquidity replenishment and mean reversion), and so on. The branching ratio becomes the spectral radius of the matrix of kernel integrals.</p>
+
+  <!-- 4.4 -->
+  <h3 id="discrete">4.4 The model actually fitted</h3>
+  <p>The project does not fit the continuous model above. It fits a discrete-time analogue on 1 s counts, with one decay shared by all four kernels (7 parameters):</p>
+  <div class="eq">
+    <div class="row"><i>λ</i><sup>b</sup><sub><i>t</i></sub> = <i>μ</i><sub>b</sub> + <i>β λ</i><sup>b</sup><sub><i>t</i>−1</sub> + <i>α</i><sub>bb</sub> <i>N</i><sup>b</sup><sub><i>t</i>−1</sub> + <i>α</i><sub>bs</sub> <i>N</i><sup>s</sup><sub><i>t</i>−1</sub></div>
+    <div class="row"><i>λ</i><sup>s</sup><sub><i>t</i></sub> = <i>μ</i><sub>s</sub> + <i>β λ</i><sup>s</sup><sub><i>t</i>−1</sub> + <i>α</i><sub>ss</sub> <i>N</i><sup>s</sup><sub><i>t</i>−1</sub> + <i>α</i><sub>sb</sub> <i>N</i><sup>b</sup><sub><i>t</i>−1</sub></div>
+  </div>
+  <p><span class="m"><i>λ</i><sub><i>t</i></sub></span> is the expected count <em>in</em> bucket <span class="m"><i>t</i></span> given counts up to <span class="m"><i>t</i>−1</span>. How to read the parameters:</p>
+  <ul>
+    <li><span class="m"><i>β</i></span> is per-bucket persistence, not a rate. The continuous decay is <span class="m"><i>ω</i> = −ln <i>β</i> / Δ</span>, and the half-life is <span class="m">ln ½ / ln <i>β</i></span> buckets. AAPL: <span class="m"><i>β</i> = 0.942</span>, so <span class="m"><i>ω</i> = 0.060 s<sup>−1</sup></span> and the half-life is 11.6 s. BTCUSDT: <span class="m"><i>β</i> = 0.824</span>, half-life 3.6 s.</li>
+    <li>An event in bucket <span class="m"><i>u</i></span> adds <span class="m"><i>α β</i><sup><i>k</i>−1</sup></span> to the intensity <span class="m"><i>k</i> ≥ 1</span> buckets later, so its total offspring is <span class="m"><i>α</i> / (1 − <i>β</i>)</span>. <strong>The branching matrix is <span class="m">𝐀 / (1 − <i>β</i>)</span></strong>, not <span class="m"><i>α</i>/<i>β</i></span>, and the branching ratio is its spectral radius.</li>
+    <li>For non-negative <span class="m">𝐀</span>, <span class="m">ρ(𝐀)/(1−<i>β</i>) &lt; 1 ⇔ <i>β</i> + ρ(𝐀) = ρ(<i>β</i>𝐈 + 𝐀) &lt; 1</span>. So stationarity can be checked on the one-step companion matrix. AAPL: branching 0.831, companion 0.990. BTCUSDT: 0.761 and 0.958.</li>
+    <li>The stationary mean is <span class="m"><i>λ̄</i> = ((1−<i>β</i>)𝐈 − 𝐀)<sup>−1</sup> <i>μ</i></span>.</li>
+  </ul>
+  <p><strong>Estimation.</strong> A Poisson quasi-likelihood, <span class="m">ℓ(<i>θ</i>) = Σ<sub><i>t</i></sub> [<i>N</i><sub><i>t</i></sub> ln <i>λ</i><sub><i>t</i></sub>(<i>θ</i>) − <i>λ</i><sub><i>t</i></sub>(<i>θ</i>)]</span> over both sides, maximised with L-BFGS-B (numerical gradients, bounds <span class="m"><i>β</i> ∈ [0, 0.999]</span>, <span class="m"><i>α</i> ∈ [0, 5]</span>). It is a quasi-MLE: given the past, a bucket's count from a true Hawkes process is over-dispersed rather than Poisson. AAPL buy counts have variance/mean = 35, and 34% of buy buckets hold three or more trades. The estimator is consistent for the conditional mean but not efficient, and its likelihood-ratio statistics are diagnostic only. No stationarity constraint is imposed; stability is checked after fitting.</p>
+  <p><strong>The OFI built from it:</strong> <span class="m">hawkes_ofi = (<i>λ</i><sup>b</sup> − <i>λ</i><sup>s</sup>) / (<i>λ</i><sup>b</sup> + <i>λ</i><sup>s</sup>) ∈ [−1, 1]</span>. This "OFI" is an <em>intensity</em> imbalance of trades. It is not the Cont–Kukanov–Stoikov (2014) order-flow imbalance, which is built from changes in best-level queue sizes.</p>
+  <div class="callout">
+    <span class="k">Timing detail that matters</span>
+    <p>Step 2's <span class="m"><i>λ</i><sub><i>t</i></sub></span> on row <span class="m"><i>t</i></span> excludes bucket <span class="m"><i>t</i></span>'s own trades, although they are known by the time row <span class="m"><i>t</i></span> is. The EWMA on the same row includes them. Step 5 therefore uses the one-step-ahead intensity <span class="m"><i>λ</i><sub><i>t</i>+1|<i>t</i></sub> = <i>μ</i> + <i>β λ</i><sub><i>t</i></sub> + 𝐀 <i>N</i><sub><i>t</i></sub></span>, which uses exactly the information the EWMA uses. Step 2b provides the same one-step-ahead, walk-forward intensity to the engine for the corrected comparison.</p>
+  </div>
+
+  <p><strong>Time-of-day baseline.</strong> A constant <span class="m"><i>μ</i></span> cannot follow the open's burst of activity, so the fit explains it with excitation and the branching ratio drifts toward 1. Replacing <span class="m"><i>μ</i></span> with one value per side for each 30-minute block (AAPL) or hour (BTCUSDT) keeps <span class="m">𝐀</span> and <span class="m"><i>β</i></span> shared. On AAPL that adds 24 parameters, improves the quasi-likelihood by LR = 4,150, and cuts the branching ratio from 0.83 to 0.46.</p>
+
+  <!-- 4.5 -->
+  <h3 id="ewma">4.5 EWMA baseline</h3>
+  <p>The baseline smooths counts with pandas <code>ewm(span=60, adjust=False)</code>, so <span class="m"><i>a</i> = 2/61 ≈ 0.033</span>:</p>
+  <div class="eq">
+    <div class="row"><i>λ̃</i><sup>b</sup><sub><i>t</i></sub> = (1 − <i>a</i>) <i>λ̃</i><sup>b</sup><sub><i>t</i>−1</sub> + <i>a N</i><sup>b</sup><sub><i>t</i></sub>, &nbsp;&nbsp; order_flow_imbalance = (<i>λ̃</i><sup>b</sup> − <i>λ̃</i><sup>s</sup>) / (<i>λ̃</i><sup>b</sup> + <i>λ̃</i><sup>s</sup>)</div>
+  </div>
+  <p>Compare with 4.4. The EWMA is the same linear filter with <span class="m"><i>μ</i> = 0</span>, <span class="m"><i>β</i> = 1 − <i>a</i> = 0.967</span>, <span class="m"><i>α</i><sub>bb</sub> = <i>a</i></span>, no cross-excitation, and a branching ratio of exactly 1: it is a unit-gain smoother. Its half-life is fixed at about 21 s. So the Hawkes model is an EWMA with three things <em>fitted</em>: a baseline, a decay, and cross-terms. That makes a mechanism easy to state. The Hawkes features can add value when the fitted decay is far from 21 s, as on BTCUSDT (3.6 s), and little when it is close, as on AAPL (11.6 s). This is a hypothesis; the test is listed under next steps.</p>
+
+  <h4>Event-time features</h4>
+  <p>The 1 s model only sees counts per bucket, but the exact fit puts most excitation below a millisecond. The event-time features work from individual trade timestamps instead. For half-lives <span class="m"><i>h</i> ∈ {0.1, 1, 10}</span> s, with <span class="m"><i>ω</i> = ln 2 / <i>h</i></span>, each side gets</p>
+  <div class="eq"><div class="row"><i>R</i><sub><i>ω</i></sub>(<i>t</i>) = Σ<sub><i>t</i><sub><i>i</i></sub> &lt; <i>t</i></sub> <i>ω</i> e<sup>−<i>ω</i>(<i>t</i> − <i>t</i><sub><i>i</i></sub>)</sup> <span class="note">evaluated at each bucket's end; one sweeping order at one timestamp counts once</span></div></div>
+  <p>The features are the log of each side's sum and their imbalance, per scale. A linear model on them is a learned sum-of-exponentials Hawkes intensity: the ridge sets the excitation weights for the target directly, with no point-process fit.</p>
+
+  <!-- 4.6 -->
+  <h3 id="as">4.6 Avellaneda–Stoikov quoting</h3>
+  <p>The quoting core is Avellaneda &amp; Stoikov (2008). Setup: the mid follows <span class="m">d<i>S</i> = <i>σ</i> d<i>W</i></span>. The market maker posts a bid at <span class="m"><i>S</i> − <i>δ</i><sup>b</sup></span> and an ask at <span class="m"><i>S</i> + <i>δ</i><sup>a</sup></span>. Each quote is hit by market orders at Poisson rate <span class="m"><i>Λ</i>(<i>δ</i>) = <i>A</i> e<sup>−<i>kδ</i></sup></span>: further from mid, fewer fills. The market maker maximises CARA utility <span class="m">−E[exp(−<i>γ</i>(<i>X</i><sub><i>T</i></sub> + <i>q</i><sub><i>T</i></sub><i>S</i><sub><i>T</i></sub>))]</span> of terminal wealth, where <span class="m"><i>X</i></span> is cash and <span class="m"><i>q</i></span> inventory.</p>
+  <p>The value function <span class="m"><i>u</i>(<i>t</i>, <i>x</i>, <i>S</i>, <i>q</i>)</span> solves the HJB equation</p>
+  <div class="eq">
+    <div class="row">∂<sub><i>t</i></sub><i>u</i> + ½<i>σ</i>²∂<sub><i>SS</i></sub><i>u</i> + max<sub><i>δ</i><sup>b</sup></sub> <i>Λ</i>(<i>δ</i><sup>b</sup>)[<i>u</i>(<i>x</i> − <i>S</i> + <i>δ</i><sup>b</sup>, <i>q</i>+1) − <i>u</i>] + max<sub><i>δ</i><sup>a</sup></sub> <i>Λ</i>(<i>δ</i><sup>a</sup>)[<i>u</i>(<i>x</i> + <i>S</i> + <i>δ</i><sup>a</sup>, <i>q</i>−1) − <i>u</i>] = 0</div>
+  </div>
+  <p>The ansatz <span class="m"><i>u</i> = −e<sup>−<i>γx</i></sup> e<sup>−<i>γθ</i>(<i>t</i>,<i>S</i>,<i>q</i>)</sup></span>, with a first-order expansion in <span class="m"><i>q</i></span>, gives the familiar closed forms:</p>
+  <div class="eq">
+    <div class="row"><i>r</i> = <i>S</i> − <i>q γ σ</i>² <i>τ</i> <span class="note">reservation price: inventory pushes both quotes away from the side you are long</span></div>
+    <div class="row"><i>δ</i><sup>b</sup> + <i>δ</i><sup>a</sup> = <i>γ σ</i>² <i>τ</i> + (2/<i>γ</i>) ln(1 + <i>γ</i>/<i>k</i>) <span class="note">so half-spread = ½<i>γσ</i>²<i>τ</i> + (1/<i>γ</i>) ln(1 + <i>γ</i>/<i>k</i>)</span></div>
+  </div>
+  <p>Here <span class="m"><i>τ</i> = <i>T</i> − <i>t</i></span>. The spread has a risk part that grows with variance and horizon, and an adverse-fill part set by how fast fill probability decays with distance. Units in this repository: <span class="m"><i>σ</i></span> in $/√s, <span class="m"><i>τ</i></span> in seconds, <span class="m"><i>k</i></span> per dollar, <span class="m"><i>γ</i></span> per dollar.</p>
+  <p><strong>Two worked numbers</strong> (<span class="m"><i>γ</i> = 0.1</span>):</p>
+  <ul>
+    <li>Grid value <span class="m"><i>k</i> = 6</span>: <span class="m">(1/<i>γ</i>) ln(1 + <i>γ</i>/<i>k</i>) = 10 · ln(1.0167) = $0.165</span>, a half-spread of 16.5 ticks on a stock whose spread is usually 1 tick. Calibrated <span class="m"><i>k</i> ≈ 58</span>: $0.017, or 1.7 ticks. The value of <span class="m"><i>k</i></span> decides whether the strategy is a real market maker or a far-away limit-order seller.</li>
+    <li>Inventory skew with <span class="m"><i>σ</i> ≈ 6×10<sup>−5</sup> · $193 = $0.0116/√s</span> and <span class="m"><i>τ</i> = 60 s</span>: <span class="m"><i>γσ</i>²<i>τ</i> ≈ 8×10<sup>−4</sup></span> $/share, so 100 shares long moves the reservation price down by about 8 cents.</li>
+  </ul>
+  <p>The engine replaces <span class="m"><i>T</i> − <i>t</i></span> with <span class="m"><i>τ</i> = min(60 s, seconds left)</span>, a rolling risk horizon. With a 6.5-hour session, the textbook <span class="m"><i>τ</i></span> would make early-day quotes absurdly wide.</p>
+
+  <!-- 4.7 -->
+  <h3 id="engine">4.7 Engine extensions to A–S</h3>
+  <p>Per 1 s row, in this order:</p>
+  <ol>
+    <li><strong>Signal.</strong> <span class="m">OFI = hawkes_ofi</span> when running with <code>--use-hawkes</code>, else the EWMA <code>order_flow_imbalance</code>. With <code>--ofi-standardize</code> it is replaced by a causal z-score (mean and variance of earlier rows only) scaled to a standard deviation of 0.2, so thresholds and skews mean the same thing for both signals.</li>
+    <li><strong>Reservation price</strong> <span class="m"><i>r</i> = <i>m</i> − <i>qγσ</i>²<i>τ</i> + <i>c</i><sub>ofi</sub>·OFI + <i>c</i><sub>μ</sub>(<i>p</i><sup>μ</sup> − <i>m</i>)</span>, with <span class="m"><i>c</i><sub>ofi</sub> = 0.03</span> $ and <span class="m"><i>c</i><sub>μ</sub> = 0.10</span>. These two skews are hand-set, not derived.</li>
+    <li><strong>Half-spread</strong> from the A–S formula, floored at <code>min_spread_ticks</code>·tick/2 = 1 cent.</li>
+    <li><strong>Toxicity.</strong> Buy pressure threatens the ask. If OFI &gt; 0.20, widen the ask by 3 ticks; if OFI &gt; 0.45, pull it. Mirror image for the bid. The original code protected the wrong side (gap E3).</li>
+    <li><strong>Rounding and clamping.</strong> Round to the tick, then clamp so the bid ≤ best bid and the ask ≥ best ask: the engine never improves the inside.</li>
+    <li><strong>Risk.</strong> Quote a side only if one more 25-share fill keeps |<i>q</i>| ≤ 500.</li>
+    <li><strong>Fills</strong> (4.8), then accounting (4.9) and the latency timer.</li>
+  </ol>
+
+  <!-- 4.8 -->
+  <h3 id="fills">4.8 Fill model</h3>
+  <p>The original engine draws fills from a parametric model, kept as the default and for step 4. For the bid, at distance <span class="m"><i>δ</i> = <i>m</i> − bid</span>:</p>
+  <div class="eq">
+    <div class="row"><i>p</i><sub>fill</sub> = [1 − exp(−<i>A</i> · <i>λ</i><sup>s</sup> · e<sup>−<i>kδ</i></sup> · Δ<i>t</i>)] · <i>h</i><sub>queue</sub> · <i>h</i><sub>tox</sub>, &nbsp;&nbsp; Δ<i>t</i> = 1 s</div>
+    <div class="row"><i>h</i><sub>queue</sub> = clip(0.25 + 0.45 · 25/(<i>V</i><sup>b</sup> + 25) + 0.30 · min(1, 100/depth<sub>10</sub>), 0, 1), &nbsp;&nbsp; <i>h</i><sub>tox</sub> = 1 − 0.6 |OFI| on the threatened side</div>
+  </div>
+  <p>The bid is filled by <em>sell</em> market orders, so its "pressure" is the sell intensity <span class="m"><i>λ</i><sup>s</sup></span>: the Hawkes intensity in Hawkes runs, the EWMA in baseline runs. Each fill is the full 25 shares, both sides can fill in the same second, and a 0.20 bp maker fee is charged. Draws come from a seeded <code>mt19937_64</code>, two per row (bid, then ask) whether or not a side is quoted, so a seed reproduces a run exactly.</p>
+  <p><strong>Calibrating <span class="m"><i>A</i>, <i>k</i></span>.</strong> <code>calibrate_fill_model.py</code> measures how often next-second trades reach each distance from the end-of-bucket mid, and fits <span class="m">ln <i>Λ</i>(<i>δ</i>) = ln <i>Λ</i><sub>0</sub> − <i>kδ</i></span>. The result is <span class="m"><i>k</i> ≈ 58 per $</span> and <span class="m"><i>A</i> ≈ 0.066</span>. These are <em>touch</em> rates, an upper bound on fills, because reaching a price level does not mean the order at the back of its queue trades.</p>
+
+  <h4>Replay fills (<code>--fill-model replay</code>)</h4>
+  <p>Fills come from what actually traded in the next second, so the signal cannot influence its own fills and adverse selection is real. For a bid at price <span class="m"><i>P</i></span>:</p>
+  <ul>
+    <li>A sell printed <em>below</em> <span class="m"><i>P</i></span> consumed every bid at <span class="m"><i>P</i></span>, ours included: a full 25-share fill.</li>
+    <li>Sells printed <em>at</em> <span class="m"><i>P</i></span> first consume the queue ahead of us. That queue starts as the displayed size when we join at the touch and carries over while our price is unchanged (FIFO). Cancellations ahead are ignored, which makes fills late, so the model is conservative.</li>
+    <li>Behind the touch the queue is not observed, so only trades printed through our price fill us.</li>
+  </ul>
+  <p>There is no random draw. The remaining optimism is that a quote is assumed live for the whole next second (no latency).</p>
+
+  <!-- 4.9 -->
+  <h3 id="accounting">4.9 Accounting</h3>
+  <dl class="gloss">
+    <dt>cash, q</dt><dd>A bid fill of 25 at <span class="m"><i>P</i></span>: cash −= 25<span class="m"><i>P</i></span> + fee, <span class="m"><i>q</i></span> += 25. Mirror image for asks.</dd>
+    <dt>MTM PnL</dt><dd>cash + <span class="m"><i>q</i> · <i>m</i></span>. No liquidation cost at the close.</dd>
+    <dt>markout</dt><dd>Per share, at horizon <span class="m"><i>h</i></span> (default 1 s): bid <span class="m"><i>m</i><sub><i>t</i>+<i>h</i></sub> − <i>P</i></span>, ask <span class="m"><i>P</i> − <i>m</i><sub><i>t</i>+<i>h</i></sub></span>. Positive means the fill was profitable. The original sign was inverted (E1).</dd>
+    <dt>adverse selection</dt><dd>Mid moving against the new position: <span class="m">max(0, <i>m</i><sub><i>t</i></sub> − <i>m</i><sub><i>t</i>+<i>h</i></sub>)</span> × qty for buys. The original measured spread earned instead (E2).</dd>
+    <dt>realized spread</dt><dd><span class="m">(<i>m</i> − <i>P</i><sup>bid</sup>)</span> × qty for buys: the edge captured at the moment of the fill.</dd>
+  </dl>
+
+  <!-- 4.10 -->
+  <h3 id="evaluation">4.10 Evaluation machinery</h3>
+  <h4>Simulator (step 4)</h4>
+  <p>Each configuration is run with seeds 1–10, and Hawkes and baseline share the seed, <span class="m"><i>A</i></span> and <span class="m"><i>k</i></span>. The reported statistic is the mean paired difference in final PnL with a 95% <span class="m"><i>t</i></span>-interval over seeds. That interval covers fill-simulation randomness only, not day-to-day market variation.</p>
+  <h4>Prediction (steps 5–6)</h4>
+  <ul>
+    <li><strong>Walk-forward.</strong> The first 20% of rows warm up the model. The remaining 80% is cut into five contiguous test blocks, and each block's model is trained on everything before it (expanding window).</li>
+    <li><strong>No leakage.</strong> Features are standardised with training-fold statistics, and the Hawkes parameters are re-estimated on each training window. Tests in <code>tests/test_no_lookahead.py</code> scramble the future and assert that the past is unchanged.</li>
+    <li><strong>Model.</strong> Closed-form ridge, <span class="m"><i>β̂</i> = (<i>X</i>ᵀ<i>X</i> + <i>α</i>𝐈)<sup>−1</sup><i>X</i>ᵀ<i>y</i></span> with <span class="m"><i>α</i> = 1</span> (not tuned), on 9 AAPL baseline features (5 on BTCUSDT, which has no book), with and without the three Hawkes features.</li>
+    <li><strong>OOS R²</strong> <span class="m">= 1 − Σ(<i>y</i> − <i>ŷ</i>)² / Σ<i>y</i>²</span>, measured against predicting zero: the standard benchmark for short-horizon returns, whose mean is about 0.</li>
+    <li><strong>Hit rate</strong> = sign agreement on rows whose target is non-zero.</li>
+    <li><strong>Paired loss differential</strong> <span class="m"><i>d</i><sub><i>t</i></sub> = (<i>y</i> − <i>ŷ</i><sub>base</sub>)² − (<i>y</i> − <i>ŷ</i><sub>hawkes</sub>)²</span>; positive means Hawkes is better. It is tested two ways. (1) A fold-level <span class="m"><i>t</i></span>-test on the five fold means: conservative, 4 degrees of freedom. (2) Diebold–Mariano on all pooled rows with a Newey–West (Bartlett) long-run variance <span class="m">σ̂² = <i>γ̂</i><sub>0</sub> + 2Σ<sub><i>k</i>≤<i>L</i></sub>(1 − <i>k</i>/(<i>L</i>+1))<i>γ̂</i><sub><i>k</i></sub></span>, with lag <span class="m"><i>L</i></span> = horizon + 10. Overlapping 5 s and 10 s targets make a plain pooled <span class="m"><i>t</i></span>-test badly over-confident.</li>
+    <li><strong>Cross-day test (BTCUSDT).</strong> Hawkes parameters and ridge coefficients are fitted on day <span class="m"><i>d</i>−1</span> and applied unchanged to day <span class="m"><i>d</i></span>. Each test day contributes one mean loss differential. Days are close to independent, so a plain <span class="m"><i>t</i></span>-test across the six test days is valid, though it has little power.</li>
+    <li><strong>Bid-ask bounce.</strong> BTCUSDT is priced by its last trade. 88% of its non-zero one-second moves are exactly one tick, which is the bounce between bid and ask. A sign hit on a bounce predicts which side traded last, not where the price went, so BTCUSDT hit rates count only moves larger than 1.5 ticks. The squared-error tests weight by size and are not affected.</li>
+    <li><strong>Multiple testing.</strong> Four targets per instrument, so Bonferroni p &lt; 0.0125. <span class="chip robust">robust</span> means both tests clear it, <span class="chip suggest">suggestive</span> means either is below 0.05, and <span class="chip null">null</span> otherwise.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ 5 -->
+<section id="results" class="wide">
+  <h2><span class="num">5</span>Results</h2>
+
+  <h3 id="res-calib">5.1 Hawkes calibration</h3>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Diagnostic</th><th class="n">AAPL (1 day)</th><th class="n">BTCUSDT (7 days, range)</th><th>Reading</th></tr></thead>
+      <tbody>
+        <tr><td><span class="m"><i>β</i></span> / half-life</td><td class="n">0.942 / 11.6 s</td><td class="n">0.80–0.90 / 3.2–6.8 s</td><td>Crypto flow forgets two to three times faster</td></tr>
+        <tr><td>Branching ratio, constant <span class="m"><i>μ</i></span></td><td class="n">0.831</td><td class="n">0.58–0.87</td><td>Mostly endogenous, on both</td></tr>
+        <tr><td>Branching ratio, time-of-day <span class="m"><i>μ</i></span></td><td class="n">0.457</td><td class="n">0.44–0.74</td><td>A large part was seasonality</td></tr>
+        <tr><td>Companion radius ρ(<i>β</i>𝐈 + 𝐀)</td><td class="n">0.990</td><td class="n">0.92–0.98</td><td>Stable</td></tr>
+        <tr><td>Buy buckets with ≥ 3 events</td><td class="n">33.8%</td><td class="n">24–42%</td><td>The 1 s Poisson approximation is rough</td></tr>
+        <tr><td>Quasi-LR vs Poisson / vs no-cross</td><td class="n">60,428 / 3,461</td><td class="n">—</td><td>Clustering and cross-excitation both matter</td></tr>
+        <tr><td>Branching in four intraday windows</td><td class="n">0.24–0.75</td><td class="n">—</td><td>Parameters move through the day</td></tr>
+        <tr><td>Exact event-time fit (3 exponentials)</td><td class="n">28 µs, 0.65 ms, 0.17 s</td><td class="n">—</td><td>The dominant excitation is sub-millisecond</td></tr>
+        <tr><td>Time-rescaling KS test</td><td class="n">p ≈ 0 for all kernels</td><td class="n">—</td><td>Descriptive model, not a correct one</td></tr>
+      </tbody>
+    </table>
+    <caption>Sources: docs/hawkes_calibration.md, output/step6_binance_validation/hawkes_fit_by_day.csv.</caption>
+  </div>
+  <div class="figs">
+    <figure><img src="../output/hawkes_diagnostics/e_parameter_stability.png" alt="Hawkes parameters refitted on four equal intraday windows"><figcaption>AAPL parameters refitted on four intraday windows. They move a lot; a constant baseline cannot follow intraday seasonality.</figcaption></figure>
+    <figure><img src="../output/hawkes_diagnostics/c_qq_time_rescaling.png" alt="Q–Q plot of rescaled inter-event times against Exponential(1)"><figcaption>Time-rescaling Q–Q. If the model were correct, the points would lie on the diagonal. The tails show leftover clustering.</figcaption></figure>
+  </div>
+
+  <h3 id="res-fill">5.2 Fill-model calibration</h3>
+  <p>The fitted decay is <span class="m"><i>k</i> ≈ 58</span> per dollar, against the 4–8 assumed in the original sweep. At the grid's ~16-tick quote distance, the parametric model gives thousands of times more fills than the data support. At the calibrated point it quotes ~1.7 ticks from mid and reports about $200–260/day. Replaying real trades through the same quotes gives about −$930/day (5.3). The parametric number is not reliable, at any calibration.</p>
+  <figure><img src="../output/fill_calibration/touch_curve.png" alt="Log touch intensity against distance from mid with a fitted line"><figcaption>Touch intensity against distance from mid, with the log-linear fit that gives <span class="m"><i>k</i></span>.</figcaption></figure>
+
+  <h3 id="res-engine">5.3 Simulator: Hawkes vs baseline</h3>
+  <p>The corrected comparison (step 4b) removes the walk-forward, scaling and fill-model confounds (gaps O1–O3, O5, O9 in section 6). AAPL 2024-06-03; deterministic runs; 95% CIs are Newey–West (lag 300 s) on per-second PnL increment differences.</p>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Configuration (replay fills)</th><th class="n">Hawkes $</th><th class="n">Baseline $</th><th class="n">Hawkes − baseline</th><th class="n">OFI rules on − off (Hawkes)</th><th class="n">Markout ¢/share, 1 s</th></tr></thead>
+      <tbody>
+        <tr><td>Calibrated, k = 58</td><td class="n">−931</td><td class="n">−978</td><td class="n">+47 [−26, 120]</td><td class="n">+115 [19, 210]</td><td class="n">−0.7</td></tr>
+        <tr><td>At the touch, k = 200</td><td class="n">−1,485</td><td class="n">−1,489</td><td class="n">+4 [−78, 87]</td><td class="n">+285 [179, 392]</td><td class="n">−0.6</td></tr>
+        <tr><td>Legacy default, k = 6 (10 fills all day)</td><td class="n">−4</td><td class="n">−4</td><td class="n">0</td><td class="n">−0.3 [−0.7, 0.2]</td><td class="n">+0.2</td></tr>
+      </tbody>
+    </table>
+    <caption>Source: output/step4b_fixed/step4b_report.txt. The original parametric sweep (step 4: +$46 to +$910 for Hawkes) is kept for reference in output/step4_analysis/.</caption>
+  </div>
+  <p>The market maker loses money once fills reflect what actually traded. Its fills are adversely selected: a quote gets hit when the price is about to move through it. Hawkes and baseline quoting cannot be told apart. The OFI rules (widen or pull the threatened side) now <em>reduce</em> losses. Under the old parametric model they looked harmful only because fills were drawn independently of later price moves, so stepping out of the way could never pay.</p>
+
+  <h3 id="res-oos">5.4 Out-of-sample prediction</h3>
+  <h4>AAPL, one day (walk-forward within the day)</h4>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Target</th><th class="n">R² base</th><th class="n">R² +Hawkes</th><th>+Hawkes verdict</th><th class="n">R² +event-time</th><th>+Event-time verdict</th></tr></thead>
+      <tbody>
+        <tr><td>1 s return</td><td class="n">0.0214</td><td class="n">0.0207</td><td><span class="chip null">null</span></td><td class="n">0.0123</td><td><span class="chip worse">suggestive, EWMA better</span></td></tr>
+        <tr><td>5 s return</td><td class="n">0.0046</td><td class="n">0.0005</td><td><span class="chip null">null</span></td><td class="n">−0.0221</td><td><span class="chip worse">suggestive, EWMA better</span></td></tr>
+        <tr><td>10 s return</td><td class="n">−0.0049</td><td class="n">−0.0179</td><td><span class="chip worse">suggestive, EWMA better</span></td><td class="n">−0.0609</td><td><span class="chip worse">suggestive, EWMA better</span></td></tr>
+        <tr><td>Next-second flow imbalance</td><td class="n">0.0857</td><td class="n">0.0863</td><td><span class="chip null">null</span></td><td class="n">0.0895</td><td><span class="chip suggest">suggestive, event-time better</span></td></tr>
+      </tbody>
+    </table>
+    <caption>Source: docs/alpha_signal.md. Running AAPL with the BTCUSDT flow-only baseline does not change the return results.</caption>
+  </div>
+  <h4>BTCUSDT, seven days</h4>
+  <p>Trained on one day, tested on the next: six independent test days. "Days better" counts days on which the alternative had the lower squared error. Hit-rate gains count only moves larger than the bid-ask bounce.</p>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>Target</th><th class="n">+Hawkes days better</th><th class="n">p across days</th><th class="n">Hit gain</th><th class="n">+Event-time days better</th><th class="n">p across days</th><th class="n">Hit gain</th></tr></thead>
+      <tbody>
+        <tr><td>1 s return</td><td class="n">4 / 6</td><td class="n">0.090</td><td class="n">+2.2 pp</td><td class="n">5 / 6</td><td class="n">0.030</td><td class="n">+1.1 pp</td></tr>
+        <tr><td>5 s return</td><td class="n">5 / 6</td><td class="n">0.059</td><td class="n">+2.8 pp</td><td class="n">5 / 6</td><td class="n">0.016</td><td class="n">+1.8 pp</td></tr>
+        <tr><td>10 s return</td><td class="n">4 / 6</td><td class="n">0.20</td><td class="n">+2.3 pp</td><td class="n">5 / 6</td><td class="n">0.024</td><td class="n">+1.3 pp</td></tr>
+        <tr><td>Next-second flow imbalance</td><td class="n">5 / 6</td><td class="n">0.35</td><td class="n">+0.4 pp</td><td class="n"><strong>6 / 6</strong></td><td class="n"><strong>0.0006</strong></td><td class="n">+2.6 pp</td></tr>
+      </tbody>
+    </table>
+    <caption>Bonferroni threshold 0.0125 per model. Within each day separately, both models show a gain on 17 of 21 day×horizon return tests at p &lt; 0.05. Source: docs/binance_validation.md.</caption>
+  </div>
+  <p><strong>Reading.</strong> On BTCUSDT, Hawkes-type features carry information the EWMA lacks, consistently across a week. The clearest result is the event-time features forecasting next-second order flow. The return effects are small and do not clear a strict multiple-testing bar with only six test days. On AAPL there is no effect. The gap between instruments is not explained by the weaker BTCUSDT baseline.</p>
+  <div class="figs">
+    <figure><img src="../plots/08_alpha_signal_oos_r2.png" alt="AAPL out-of-sample R squared by target, baseline vs Hawkes, with confidence intervals"><figcaption>AAPL: OOS R² by target, baseline vs +Hawkes (95% CI over folds).</figcaption></figure>
+    <figure><img src="../plots/09_binance_oos_r2.png" alt="BTCUSDT cross-day hit-rate gain per test day for Hawkes and event-time models"><figcaption>BTCUSDT cross-day test: hit-rate gain over the baseline on each test day (dots), mean ± 95% CI.</figcaption></figure>
+  </div>
+
+  <h3 id="res-bench">5.5 Engine benchmark</h3>
+  <p>About 127,000 rows/s including CSV parsing and writing, with a median per-tick latency of 0.07 µs at p50 and 0.14 µs at p99, and no latency-budget breaches (AMD Ryzen 9 7940HS, <code>make bench</code>). This times the arithmetic of one 1 s row. It says nothing about network or exchange latency, which is where real market-making latency lives.</p>
+</section>
+
+<!-- ============================================================ 6 -->
+<section id="gaps" class="wide">
+  <h2><span class="num">6</span>Gaps audit</h2>
+  <p>This audit covers the code and the reasoning behind each claim. Earlier fixes to the original repository, such as the markout sign, the adverse-selection definition, the toxicity side, the volatility units and the label look-ahead, are recorded in <code>docs/changes.md</code> and not repeated here.</p>
+
+  <h3>Fixed</h3>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>#</th><th>Problem</th><th>Fix</th><th>What it changed</th></tr></thead>
+      <tbody>
+        <tr><td class="group" colspan="4">High severity</td></tr>
+        <tr><td class="mono">O1</td><td>Engine used stale <span class="m"><i>λ</i><sub><i>t</i></sub></span> fitted on the whole day</td><td>Step 2b: refitted every 30 min on past data, one-step-ahead <span class="m"><i>λ</i><sub><i>t</i>+1|<i>t</i></sub></span></td><td>Walk-forward branching rises 0.47 → 0.81 through the day: the full-day fit leaked the future</td></tr>
+        <tr><td class="mono">O2</td><td>One ±0.2 threshold for signals with sd 0.10 and 0.21</td><td>Engine <code>--ofi-standardize</code>: causal z-score scaled to sd 0.2</td><td>Thresholds now mean the same thing in both modes</td></tr>
+        <tr><td class="mono">O3</td><td>Hawkes intensity drove its own fill rate</td><td>Engine <code>--fill-model replay</code> (fills from real trades); <code>--pressure-source ewma</code> for the parametric check</td><td>Hawkes's simulator edge disappears: +47 [−26, 120]</td></tr>
+        <tr><td class="mono">O4</td><td>One day per instrument, no holdout</td><td>7 BTCUSDT days with a cross-day test; holdout week recorded and enforced (<code>config/holdout.json</code>)</td><td>BTCUSDT gains replicate across days. AAPL stays one day (needs a purchase)</td></tr>
+        <tr><td class="group" colspan="4">Medium severity</td></tr>
+        <tr><td class="mono">O5</td><td>No queue position, full fills, touches as fills</td><td>Replay with FIFO queue at the touch and partial fills</td><td>Strategy goes from +$260 to −$930/day; latency and cancellations are still not modelled</td></tr>
+        <tr><td class="mono">O6</td><td>Constant baseline read seasonality as excitation</td><td>Time-of-day <span class="m"><i>μ</i></span> (<code>fit_discrete_tv</code>)</td><td>AAPL branching 0.83 → 0.46; BTCUSDT 0.58–0.87 → 0.44–0.74</td></tr>
+        <tr><td class="mono">O7</td><td>1 s buckets blind to millisecond excitation</td><td>Event-time multi-scale features from trade timestamps</td><td>Best BTCUSDT result: next-second flow, 6/6 days, p = 0.0006</td></tr>
+        <tr><td class="mono">O8</td><td>AAPL <code>trade_imbalance</code> from legacy labels</td><td>Rebuilt from corrected labels in steps 2b and 5</td><td>Mean moves 0.34 → 0.14; AAPL conclusions unchanged</td></tr>
+        <tr><td class="mono">O9</td><td>Hand-set queue-haircut constants</td><td>Not used by replay fills; queue handled explicitly</td><td>Only the legacy parametric model still has them</td></tr>
+        <tr><td class="group" colspan="4">Found during the fixes</td></tr>
+        <tr><td class="mono">F1–F7</td><td>In-sample Hawkes in step 5, stale timing, naive pooled t-test, zero returns counted as misses, BTCUSDT VWAP price, meaningless flow "PnL", stale doc numbers</td><td>Per-fold refit, <span class="m"><i>λ</i><sub><i>t</i>+1|<i>t</i></sub></span>, Diebold–Mariano HAC + Bonferroni, non-zero hit rate, last-trade price</td><td>Earlier BTCUSDT claims corrected; the timing fix strengthened the effect</td></tr>
+        <tr><td class="mono">F8</td><td>88% of BTCUSDT 1 s moves are a one-tick bounce</td><td>Hit rates count moves &gt; 1.5 ticks only (offline and live)</td><td>Event-time 1 s "gain" falls from +8.5 to +1.1 pp</td></tr>
+        <tr><td class="mono">F9</td><td>Live features drifted from offline ones (epoch-seconds precision)</td><td>Session-relative clock; a parity test now asserts live = offline</td><td>Live scores use exactly the trained features</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Still open</h3>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>#</th><th>Severity</th><th>Gap</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">R1</td><td><span class="chip med">medium</span></td><td>AAPL is one day; no AAPL holdout</td><td>Buy more Databento days (ask first)</td></tr>
+        <tr><td class="mono">R2</td><td><span class="chip med">medium</span></td><td>Replay ignores latency and cancellations ahead in the queue</td><td>MBO data for exact queue position; a latency parameter</td></tr>
+        <tr><td class="mono">R3</td><td><span class="chip med">medium</span></td><td>The engine quotes once per second, so event-time information is unused in quoting</td><td>Sub-second, event-driven engine</td></tr>
+        <tr><td class="mono">R4</td><td><span class="chip low">low</span></td><td>Time-of-day baselines are fitted on the day they describe</td><td>Profile from earlier days</td></tr>
+        <tr><td class="mono">R5</td><td><span class="chip low">low</span></td><td>Ridge with <span class="m"><i>α</i> = 1</span>, untuned and linear</td><td>Nested CV for <span class="m"><i>α</i></span>; one tree model as a check</td></tr>
+        <tr><td class="mono">R6</td><td><span class="chip low">low</span></td><td>Step 4's ad hoc "best config" score; regime tertiles from the full day; AAPL step 2 labels regenerated without raw data</td><td>As listed in <code>docs/changes.md</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>On an HJB + Hawkes controller</h3>
+  <p>A natural next step is to make <span class="m"><i>λ</i><sup>b</sup>, <i>λ</i><sup>s</sup></span> state variables of the market maker's HJB, as in Cartea, Jaimungal &amp; Ricci, instead of bolting the OFI on as a skew. The most relevant recent paper, Jain, Firoozye, Kochems &amp; Treleaven (arXiv:2510.26438, 2025), writes the HJB quasi-variational inequality for a Hawkes order book. It finds no closed form, its Deep Galerkin solver does not converge on the full model, and it reports results from a PPO agent in its own simulator. Those results use no real data, no Avellaneda–Stoikov baseline and no confidence intervals. The forecasting effect is a few percentage points, consistent across a week of one instrument and absent on the other, and the current quoting loses money once fills are real. A controller built on that signal is premature. A sub-second engine and more days come first.</p>
+</section>
+
+<!-- ============================================================ 7 -->
+<section id="demo" class="wide">
+  <h2><span class="num">7</span>Live demo</h2>
+  <p class="lede"><strong>Built and running.</strong> <code>make live</code> streams BTCUSDT from Binance's public feed and runs the step 6 models on it. It scores them each second and serves a dashboard at <code>http://127.0.0.1:8765</code>. No keys, no orders.</p>
+
+  <h3>What it does</h3>
+  <ol>
+    <li><strong>Collects</strong> the <code>aggTrade</code> and <code>bookTicker</code> streams over one WebSocket, reconnecting with backoff.</li>
+    <li><strong>Closes each second on the exchange clock</strong>, 300 ms after it ends, so late trades still land in the right bucket.</li>
+    <li><strong>Rebuilds the exact training features:</strong> span-60 EWMA, the one-step-ahead Hawkes intensity with the parameters fitted offline, event-time decayed counts, 60 s realized volatility and trade imbalance. A test asserts these match the offline pipeline to 10<sup>−9</sup>.</li>
+    <li><strong>Predicts the next second's return</strong> with the baseline, +Hawkes and +event-time ridge models from <code>output/step6_binance_validation/live_model.json</code>. It scores each forecast when that second closes, which makes it a genuinely out-of-sample version of step 6. Hit rates ignore one-tick bounces, as offline.</li>
+    <li><strong>Paper P&amp;L (option 1).</strong> Each model holds $10,000 long or short by the sign of its forecast, trades only when the sign flips, and pays the 10 bp standard taker fee. Over 6 out-of-sample days offline (<code>make taker</code>), every model makes +$20–21k gross but loses $3–4M net. The break-even fee is 0.05–0.07 bp, about 150× below the real fee. The forecasts have an edge, and fees make it worthless to a taker. A paper market maker (option 2) is planned in <code>plan.md</code> §8a.</li>
+    <li><strong>Records</strong> to <code>data/live/&lt;date&gt;/</code>: the trades in Binance's historical format, plus the best bid/ask each second, which the historical files lack. Each live session becomes a new test day with a real order book.</li>
+  </ol>
+
+  <h3>How to run it</h3>
+<pre class="cmd"><span class="c"># once: install the optional websockets dependency and build the models</span>
+uv sync --frozen --group live
+make validate-binance
+<span class="c"># live (needs network access to stream.binance.com:9443)</span>
+make live
+<span class="c"># no network: replay a downloaded day through the same code path at 20x</span>
+make live-replay</pre>
+  <p>Verified on 2026-11-17: connected, collecting about 10 trades per second, scoring after the 60 s warm-up, and recording. The page has no external dependencies, so it works offline in replay mode. It has to run locally: hosted pages block outbound WebSockets.</p>
+
+  <h3>Presenting it</h3>
+  <ul>
+    <li>Over a few minutes the scoreboard is noise: a few hundred real moves give a ±6 pp interval. Say so. The evidence is the 7-day cross-day test, and the live page shows the same models working on today's market.</li>
+    <li>If the venue blocks Binance, use <code>make live-replay</code>.</li>
+    <li>Live AAPL is not possible without a paid feed. Real orders are excluded by the project's ground rules.</li>
+  </ul>
+
+  <h3>Suggested five-minute walkthrough</h3>
+  <ol>
+    <li>One command reproduces everything (<code>make all</code>, <code>make test</code>).</li>
+    <li>Clustering is real but half of it is seasonality (5.1).</li>
+    <li>The simulator story reverses once fills are real (5.3).</li>
+    <li>The forecasting test: null on AAPL, consistent small gains on BTCUSDT (5.4).</li>
+    <li>The live dashboard.</li>
+  </ol>
+</section>
+
+<!-- ============================================================ 8 -->
+<section id="reproduce">
+  <h2><span class="num">8</span>Reproduce</h2>
+  <p>Needs <code>uv</code>, <code>g++</code> (C++17) and <code>make</code>.</p>
+<pre class="cmd"><span class="c"># pinned Python 3.12 environment</span>
+uv sync --frozen
+<span class="c"># ruff + 41 tests (builds bin/step3_mm)</span>
+make test
+<span class="c"># engine, diagnostics, steps 4, 4b and 5, plots (~3 min)</span>
+make all
+<span class="c"># step 6 on 7 BTCUSDT days: downloads ~550 MB once, then ~6 min</span>
+make validate-binance
+<span class="c"># live dashboard (needs uv sync --frozen --group live)</span>
+make live</pre>
+  <p>Raw AAPL data is licensed and not in the repository. Steps 1–2 run only if it is present in <code>data/databento/</code> (see <code>data/README.md</code>); otherwise the committed outputs are used.</p>
+</section>
+
+<!-- ============================================================ 9 -->
+<section id="glossary">
+  <h2><span class="num">9</span>Glossary</h2>
+  <dl class="gloss">
+    <dt>aggressor</dt><dd>The side that crossed the spread with a marketable order. A buy-initiated trade lifts the ask.</dd>
+    <dt>branching ratio</dt><dd>Expected direct offspring per event. Below 1 is stationary; close to 1 is near-critical.</dd>
+    <dt>companion matrix</dt><dd><span class="m"><i>β</i>𝐈 + 𝐀</span>, the one-step map of the discrete intensity. Its spectral radius must be below 1.</dd>
+    <dt>Diebold–Mariano</dt><dd>A test of equal forecast accuracy on the loss differential, using a variance that allows for autocorrelation.</dd>
+    <dt>markout</dt><dd>Profit of a fill measured against the mid a fixed time later.</dd>
+    <dt>MBP-10</dt><dd>Market-by-price, 10 levels: aggregated size at each of the best 10 prices per side.</dd>
+    <dt>MBO</dt><dd>Market-by-order: every individual order. Needed to reconstruct queue position.</dd>
+    <dt>OFI (here)</dt><dd>Intensity imbalance <span class="m">(<i>λ</i><sup>b</sup> − <i>λ</i><sup>s</sup>)/(<i>λ</i><sup>b</sup> + <i>λ</i><sup>s</sup>)</span>. Not the Cont–Kukanov–Stoikov book OFI.</dd>
+    <dt>quasi-MLE</dt><dd>Maximising a likelihood known to be misspecified, here Poisson for over-dispersed counts. It is consistent for the mean, but its likelihood-ratio tests are not exact.</dd>
+    <dt>reservation price</dt><dd>The price at which the market maker is indifferent to one more unit of inventory: <span class="m"><i>S</i> − <i>qγσ</i>²<i>τ</i></span>.</dd>
+    <dt>time-rescaling</dt><dd>If the model is right, the compensator increments between events are i.i.d. Exponential(1). The KS test and Q–Q plot check this.</dd>
+    <dt>walk-forward</dt><dd>Train on the past, test on the next block, roll forward. The model is never tuned on the block it is scored on.</dd>
+  </dl>
+</section>
+
+<footer>
+  Generated from the repository state on branch <code>repo-improvements</code>, 2026-11-17. Detailed reports: <code>docs/changes.md</code>, <code>docs/hawkes_calibration.md</code>, <code>docs/alpha_signal.md</code>, <code>docs/binance_validation.md</code>. Figures load from <code>../plots/</code> and <code>../output/</code>, so open this file from inside the repository.
+</footer>
+
+</main>
+</div>
+</body>
+</html>

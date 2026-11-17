@@ -9,6 +9,8 @@ import pytest
 import hawkes_diagnostics as hd
 import step1_build_feature_table as s1
 import step2_trade_label_and_hawkes as s2
+import step5_alpha_signal as s5
+import step6_binance_validation as s6
 
 PARAMS = np.array([0.04, 0.03, 0.03, 0.01, 0.02, 0.02, 0.94])
 
@@ -106,3 +108,82 @@ def test_native_side_overrides_quote_rule():
 def test_aggressor_side_mapping(mod):
     got = mod.map_aggressor_side(pd.Series(["B", "A", "N", "b", "-1", "1", None, "Buy", "Sell"]))
     np.testing.assert_array_equal(got, [1, -1, np.nan, 1, -1, 1, np.nan, 1, -1])
+
+
+def test_flow_target_is_shifted_not_leaked():
+    # future_ofi_1s at row t must equal the (buy-sell)/(buy+sell) imbalance realized at row t+1,
+    # not anything computable from row t's own counts.
+    df = pd.DataFrame({
+        "ts": pd.date_range("2024-06-03", periods=5, freq="1s", tz="UTC"),
+        "buy_events": [10, 4, 0, 6, 2], "sell_events": [0, 6, 0, 2, 2],
+    })
+    total = df["buy_events"] + df["sell_events"]
+    expected_next = ((df["buy_events"] - df["sell_events"]) / total.replace(0, np.nan)).shift(-1)
+    out = s5.add_flow_target(df)
+    got = out[s5.FLOW_TARGET]
+    pd.testing.assert_series_equal(got, expected_next, check_names=False)
+    assert pd.isna(got.iloc[-1])  # last row has no future bucket: must be NaN, not leaked/guessed
+
+
+def test_walk_forward_folds_never_see_their_own_future():
+    folds = s5.walk_forward_folds(n=1000, n_folds=5, warmup_frac=0.2)
+    assert len(folds) == 5
+    for train_idx, test_idx in folds:
+        assert train_idx.max() < test_idx.min()  # strictly chronological: train ends before test starts
+        assert set(train_idx).isdisjoint(set(test_idx))
+    # expanding window: later folds' training sets are supersets of earlier ones
+    for (tr1, _), (tr2, _) in zip(folds, folds[1:]):
+        assert len(tr2) > len(tr1)
+        assert set(tr1).issubset(set(tr2))
+
+
+def test_per_fold_hawkes_refit_ignores_test_window(counts):
+    yb, ys = counts
+    df = pd.DataFrame({"buy_events": yb, "sell_events": ys})
+    end = 1500
+    scrambled = df.copy()
+    scrambled.loc[end:, "buy_events"] = np.random.default_rng(5).poisson(20, len(df) - end)
+    a = s5.hawkes_features_fitted_on(df, end)
+    b = s5.hawkes_features_fitted_on(scrambled, end)
+    # Parameters come from rows < end only, and row t's one-step-ahead intensity uses counts up to
+    # t, so every row before `end` is identical whatever the test window holds.
+    pd.testing.assert_frame_equal(a.iloc[:end], b.iloc[:end])
+
+
+def test_one_step_ahead_hawkes_matches_shifted_recursion(counts):
+    yb, ys = counts
+    df = pd.DataFrame({"buy_events": yb, "sell_events": ys})
+    nxt = s5.hawkes_features_fitted_on(df, 1500)
+    fit = hd.fit_discrete(yb[:1500], ys[:1500])
+    lb, _ = hd.discrete_intensities(fit["x"], yb, ys)
+    # lambda_{t+1|t} from the closed form equals the recursion's next value.
+    np.testing.assert_allclose(nxt["lambda_buy_hawkes"].to_numpy()[:-1], lb[1:], rtol=1e-12)
+
+
+def test_diebold_mariano_hac_is_wider_than_naive_on_autocorrelated_diffs():
+    rng = np.random.default_rng(6)
+    e = rng.normal(size=5000)
+    d = 0.02 + np.convolve(e, np.ones(10) / 10, mode="same")  # strongly autocorrelated, small mean
+    _, p_hac = s5.diebold_mariano_hac(d, lag=20)
+    p_naive = __import__("scipy").stats.ttest_1samp(d, 0.0).pvalue
+    assert p_hac > p_naive
+
+
+def test_binance_aggressor_mapping():
+    # Binance: is_buyer_maker=True means the buyer was resting, so a sell order hit the bid ->
+    # the aggressor is the seller. False means the buyer crossed the spread -> aggressor is buyer.
+    got = s6.map_binance_aggressor(pd.Series([True, False, True, False]))
+    np.testing.assert_array_equal(got, [-1, 1, -1, 1])
+
+
+def test_ridge_fit_predict_uses_only_train_fold_statistics():
+    rng = np.random.default_rng(3)
+    x_train = rng.normal(size=(200, 3))
+    y_train = x_train[:, 0] * 2.0 + rng.normal(scale=0.01, size=200)
+    x_test = rng.normal(size=(50, 3))
+    pred_a = s5.ridge_fit_predict(x_train, y_train, x_test, alpha=1.0)
+    # Perturbing the test features must not change train-fold standardization (mu/sigma come
+    # from x_train only), so predictions for the first row are identical whatever follows it.
+    x_test_shrunk = x_test[:10].copy()
+    pred_b = s5.ridge_fit_predict(x_train, y_train, x_test_shrunk, alpha=1.0)
+    np.testing.assert_allclose(pred_a[:10], pred_b, rtol=1e-12)

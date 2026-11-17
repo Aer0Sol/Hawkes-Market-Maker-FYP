@@ -21,6 +21,11 @@
     "sigma_fallback": 0.000100,
     "toxic_pull_threshold": 0.450000,
     "allow_one_sided_pull": true,
+    "fill_model": "parametric",
+    "pressure_source": "signal",
+    "ofi_standardize": false,
+    "ofi_target_sd": 0.200000,
+    "ofi_warmup_rows": 300,
     "seed": 42
   },
   "n_steps": 23400,
@@ -43,10 +48,10 @@
   "bid_quote_pulls": 0,
   "ask_quote_pulls": 9,
   "risk_reject_steps": 0,
-  "mean_latency_us": 0.075433,
-  "p50_latency_us": 0.070000,
-  "p95_latency_us": 0.090000,
-  "p99_latency_us": 0.230000,
-  "max_latency_us": 18.995000,
+  "mean_latency_us": 0.094031,
+  "p50_latency_us": 0.080000,
+  "p95_latency_us": 0.130000,
+  "p99_latency_us": 0.411000,
+  "max_latency_us": 36.153000,
   "latency_budget_exceeded_count": 0
 }

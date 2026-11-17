@@ -1,0 +1,37 @@
+{
+  "n_rows": 23400,
+  "n_folds_requested": 5,
+  "warmup_frac": 0.2,
+  "ridge_alpha": 1.0,
+  "baseline_features": [
+    "order_flow_imbalance",
+    "lambda_buy_ewm",
+    "lambda_sell_ewm",
+    "imbalance_l1",
+    "imbalance_l10",
+    "microprice_alpha",
+    "spread_bps",
+    "rv_60",
+    "trade_imbalance"
+  ],
+  "hawkes_features": [
+    "order_flow_imbalance",
+    "lambda_buy_ewm",
+    "lambda_sell_ewm",
+    "imbalance_l1",
+    "imbalance_l10",
+    "microprice_alpha",
+    "spread_bps",
+    "rv_60",
+    "trade_imbalance",
+    "hawkes_ofi",
+    "lambda_buy_hawkes",
+    "lambda_sell_hawkes"
+  ],
+  "price_targets": [
+    "future_ret_1s",
+    "future_ret_5s",
+    "future_ret_10s"
+  ],
+  "flow_target": "future_ofi_1s"
+}

@@ -45,6 +45,19 @@ struct MMParams {
     double sigma_fallback = 1e-4;
     // |ofi| above which the threatened side is pulled.
     double toxic_pull_threshold = 0.45;
+
+    // "parametric": Bernoulli draw from the A, k intensity model. "replay": fills come from the
+    // next bucket's real trades (--trades), FIFO at the touch; no RNG, no haircuts.
+    std::string fill_model = "parametric";
+    std::string trades_csv;
+    // Parametric model only. "signal": pressure is the intensity of the signal in use (Hawkes or
+    // EWMA). "ewma": both modes use the EWMA intensity, so the signal cannot drive its own fills.
+    std::string pressure_source = "signal";
+    // Causal z-score of the OFI signal (expanding mean/sd of past rows only), rescaled to
+    // ofi_target_sd, so thresholds and skews mean the same thing for signals of different scale.
+    bool ofi_standardize = false;
+    double ofi_target_sd = 0.20;
+    int ofi_warmup_rows = 300;
 };
 
 struct EngineState {
@@ -245,7 +258,8 @@ static Quote avellaneda_stoikov_quotes(const Row& row,
                                        const EngineState& state,
                                        const MMParams& params,
                                        double t_frac,
-                                       double seconds_left) {
+                                       double seconds_left,
+                                       double ofi) {
     Quote q;
     q.mid = row.midprice;
     q.best_bid = row.bid_px_1;
@@ -256,7 +270,6 @@ static Quote avellaneda_stoikov_quotes(const Row& row,
         ? std::max(1e-6, std::min(params.risk_horizon_s, seconds_left))
         : std::max(1e-6, 1.0 - t_frac);
     q.tau = tau;
-    double ofi = compute_ofi_signal(row, params.use_hawkes);
 
     q.reservation = q.mid - state.inventory * params.gamma * q.sigma * q.sigma * tau;
     q.reservation += params.ofi_skew_coef * ofi;
@@ -318,16 +331,112 @@ static double queue_haircut_ask(const Row& row, int order_size, double base) {
 }
 
 // Haircut the threatened side (same rule as the widening above).
-static double toxicity_haircut_for_bid(const Row& row, const MMParams& params) {
-    double ofi = compute_ofi_signal(row, params.use_hawkes);
+static double toxicity_haircut_for_bid(double ofi, const MMParams& params) {
     if (ofi < 0.0) return clamp01(1.0 - params.toxicity_haircut_strength * std::abs(ofi));
     return 1.0;
 }
 
-static double toxicity_haircut_for_ask(const Row& row, const MMParams& params) {
-    double ofi = compute_ofi_signal(row, params.use_hawkes);
+static double toxicity_haircut_for_ask(double ofi, const MMParams& params) {
     if (ofi > 0.0) return clamp01(1.0 - params.toxicity_haircut_strength * std::abs(ofi));
     return 1.0;
+}
+
+// Causal standardisation: the z-score uses the mean/variance of rows strictly before this one.
+struct OfiStandardizer {
+    long n = 0;
+    double mean = 0.0;
+    double m2 = 0.0;
+
+    double apply(double raw, const MMParams& p) {
+        double out = 0.0;
+        if (n >= p.ofi_warmup_rows && n > 1) {
+            double sd = std::sqrt(m2 / static_cast<double>(n - 1));
+            if (sd > 0.0) out = std::max(-1.0, std::min(1.0, (raw - mean) / sd * p.ofi_target_sd));
+        }
+        ++n;
+        double d = raw - mean;
+        mean += d / static_cast<double>(n);
+        m2 += d * (raw - mean);
+        return out;
+    }
+};
+
+struct Trade {
+    double price = 0.0;
+    double size = 0.0;
+    int sign = 0;  // +1 buy-initiated, -1 sell-initiated
+};
+
+// Our resting order on one side, kept across rows while its price is unchanged.
+struct RestingOrder {
+    bool live = false;
+    double price = 0.0;
+    double queue_ahead = 0.0;
+};
+
+static std::unordered_map<std::string, std::vector<Trade>> load_trades_csv(const std::string& path) {
+    std::ifstream fin(path);
+    if (!fin.is_open()) throw std::runtime_error("Could not open trades CSV: " + path);
+    std::string line;
+    if (!std::getline(fin, line)) throw std::runtime_error("Empty trades CSV: " + path);
+    auto idx = build_header_index(split_csv_line(line));
+    for (const char* col : {"ts", "price", "size", "sign"}) {
+        if (idx.find(col) == idx.end()) throw std::runtime_error(std::string("Trades CSV missing column: ") + col);
+    }
+    std::unordered_map<std::string, std::vector<Trade>> by_bucket;
+    while (std::getline(fin, line)) {
+        if (line.empty()) continue;
+        auto f = split_csv_line(line);
+        Trade t;
+        t.price = parse_double(get_field(f, idx, "price"));
+        t.size = parse_double(get_field(f, idx, "size"));
+        t.sign = static_cast<int>(parse_double(get_field(f, idx, "sign")));
+        if (is_nan(t.price) || is_nan(t.size) || t.sign == 0) continue;
+        by_bucket[get_field(f, idx, "ts")].push_back(t);
+    }
+    return by_bucket;
+}
+
+// Replay fill for one side against the next bucket's trades. Price-time priority: a trade
+// printed strictly through our price consumed every order at our price, so we fill in full;
+// trades at our price first consume the queue ahead of us. Cancellations ahead of us are ignored,
+// which makes fills later (more conservative) than reality. Returns the filled quantity.
+static int replay_fill(RestingOrder& order, bool active, double quote_px, double best_px, double displayed_size,
+                       bool is_bid, int order_size, double tick, const std::vector<Trade>* next_trades) {
+    if (!active) {
+        order.live = false;
+        return 0;
+    }
+    const double eps = tick / 2.0;
+    if (!order.live || std::abs(order.price - quote_px) > eps) {
+        bool at_touch = std::abs(quote_px - best_px) < eps;
+        order.live = true;
+        order.price = quote_px;
+        // Behind the touch the queue at our level is not observed: only through-trades fill us.
+        order.queue_ahead = at_touch ? (is_nan(displayed_size) ? 0.0 : displayed_size)
+                                     : std::numeric_limits<double>::infinity();
+    }
+    if (next_trades == nullptr) return 0;
+
+    double through = 0.0, at_price = 0.0;
+    const int hitting_sign = is_bid ? -1 : 1;  // sells hit bids, buys lift asks
+    for (const Trade& t : *next_trades) {
+        if (t.sign != hitting_sign) continue;
+        double gap = is_bid ? (quote_px - t.price) : (t.price - quote_px);
+        if (gap > eps) through += t.size;
+        else if (std::abs(gap) <= eps) at_price += t.size;
+    }
+
+    double filled = 0.0;
+    if (through > 0.0) {
+        filled = order_size;
+    } else if (std::isfinite(order.queue_ahead)) {
+        filled = std::max(0.0, std::min(static_cast<double>(order_size), at_price - order.queue_ahead));
+    }
+    if (std::isfinite(order.queue_ahead)) order.queue_ahead = std::max(0.0, order.queue_ahead - at_price);
+    int qty = static_cast<int>(std::floor(filled + 1e-9));
+    if (qty > 0) order.live = false;  // a fresh order rejoins at the back next row
+    return qty;
 }
 
 static double fill_probability(double distance,
@@ -358,14 +467,19 @@ static double ask_markout(double fill_price, double future_mid) {
     return fill_price - future_mid;
 }
 
+using TradeBuckets = std::unordered_map<std::string, std::vector<Trade>>;
+
 static std::vector<ResultRow> run_engine(const std::vector<Row>& rows, const MMParams& params,
-                                         EngineState& state) {
+                                         EngineState& state, const TradeBuckets* trades) {
     std::vector<ResultRow> out;
     out.reserve(rows.size());
 
     state = EngineState{};
     std::mt19937_64 rng(params.seed);
     std::uniform_real_distribution<double> uni(0.0, 1.0);
+    OfiStandardizer standardizer;
+    RestingOrder bid_order, ask_order;
+    const bool replay = params.fill_model == "replay";
 
     const size_t n = rows.size();
     for (size_t i = 0; i < n; ++i) {
@@ -378,7 +492,10 @@ static std::vector<ResultRow> run_engine(const std::vector<Row>& rows, const MMP
 
         auto start = std::chrono::high_resolution_clock::now();
 
-        Quote q = avellaneda_stoikov_quotes(row, state, params, t_frac, seconds_left);
+        double ofi = compute_ofi_signal(row, params.use_hawkes);
+        if (params.ofi_standardize) ofi = standardizer.apply(ofi, params);
+
+        Quote q = avellaneda_stoikov_quotes(row, state, params, t_frac, seconds_left, ofi);
         RiskDecision risk = risk_check(state, params);
 
         if (!risk.can_bid || !risk.can_ask) state.risk_rejects++;
@@ -390,7 +507,8 @@ static std::vector<ResultRow> run_engine(const std::vector<Row>& rows, const MMP
 
         double buy_pressure = 1.0;
         double sell_pressure = 1.0;
-        if (params.use_hawkes && !is_nan(row.lambda_buy_hawkes) && !is_nan(row.lambda_sell_hawkes)) {
+        bool signal_pressure = params.pressure_source == "signal";
+        if (signal_pressure && params.use_hawkes && !is_nan(row.lambda_buy_hawkes) && !is_nan(row.lambda_sell_hawkes)) {
             buy_pressure = row.lambda_buy_hawkes;
             sell_pressure = row.lambda_sell_hawkes;
         } else {
@@ -398,29 +516,48 @@ static std::vector<ResultRow> run_engine(const std::vector<Row>& rows, const MMP
             if (!is_nan(row.lambda_sell_ewm)) sell_pressure = row.lambda_sell_ewm;
         }
 
-        double qh_bid = queue_haircut_bid(row, params.max_order_size, params.queue_haircut_base);
-        double qh_ask = queue_haircut_ask(row, params.max_order_size, params.queue_haircut_base);
-        double th_bid = toxicity_haircut_for_bid(row, params);
-        double th_ask = toxicity_haircut_for_ask(row, params);
+        double qh_bid = 1.0, qh_ask = 1.0, th_bid = 1.0, th_ask = 1.0;
+        double p_bid_fill = 0.0, p_ask_fill = 0.0;
+        int bid_fill_qty = 0, ask_fill_qty = 0;
+        const bool bid_on = risk.can_bid && q.bid_active;
+        const bool ask_on = risk.can_ask && q.ask_active;
 
-        double dt_seconds = 1.0;
-        double p_bid_fill = (risk.can_bid && q.bid_active)
-            ? fill_probability(bid_distance, sell_pressure, params.A, params.k, dt_seconds, qh_bid, th_bid)
-            : 0.0;
-        double p_ask_fill = (risk.can_ask && q.ask_active)
-            ? fill_probability(ask_distance, buy_pressure, params.A, params.k, dt_seconds, qh_ask, th_ask)
-            : 0.0;
+        if (replay) {
+            const std::vector<Trade>* next_trades = nullptr;
+            if (i + 1 < n && trades != nullptr) {
+                auto it = trades->find(rows[i + 1].ts);
+                if (it != trades->end()) next_trades = &it->second;
+            }
+            bid_fill_qty = replay_fill(bid_order, bid_on, q.bid_px, q.best_bid, row.bid_sz_1, true,
+                                       params.max_order_size, params.tick_size, next_trades);
+            ask_fill_qty = replay_fill(ask_order, ask_on, q.ask_px, q.best_ask, row.ask_sz_1, false,
+                                       params.max_order_size, params.tick_size, next_trades);
+        } else {
+            qh_bid = queue_haircut_bid(row, params.max_order_size, params.queue_haircut_base);
+            qh_ask = queue_haircut_ask(row, params.max_order_size, params.queue_haircut_base);
+            th_bid = toxicity_haircut_for_bid(ofi, params);
+            th_ask = toxicity_haircut_for_ask(ofi, params);
+
+            double dt_seconds = 1.0;
+            p_bid_fill = bid_on
+                ? fill_probability(bid_distance, sell_pressure, params.A, params.k, dt_seconds, qh_bid, th_bid)
+                : 0.0;
+            p_ask_fill = ask_on
+                ? fill_probability(ask_distance, buy_pressure, params.A, params.k, dt_seconds, qh_ask, th_ask)
+                : 0.0;
+            // Two draws per row, always in this order, so a seed reproduces a run exactly.
+            if (uni(rng) < p_bid_fill) bid_fill_qty = params.max_order_size;
+            if (uni(rng) < p_ask_fill) ask_fill_qty = params.max_order_size;
+        }
 
         int bid_fill = 0, ask_fill = 0;
-        int bid_fill_qty = 0, ask_fill_qty = 0;
         double fee_paid = 0.0;
         double bid_mo = 0.0, ask_mo = 0.0;
         double adverse_cost = 0.0;
         double realized_spread_component = 0.0;
 
-        if (uni(rng) < p_bid_fill) {
+        if (bid_fill_qty > 0) {
             bid_fill = 1;
-            bid_fill_qty = params.max_order_size;
             double fee = maker_fee(q.bid_px, bid_fill_qty, params.maker_fee_bps);
             fee_paid += fee;
             state.inventory += bid_fill_qty;
@@ -434,9 +571,8 @@ static std::vector<ResultRow> run_engine(const std::vector<Row>& rows, const MMP
             realized_spread_component += (q.mid - q.bid_px) * static_cast<double>(bid_fill_qty);
         }
 
-        if (uni(rng) < p_ask_fill) {
+        if (ask_fill_qty > 0) {
             ask_fill = 1;
-            ask_fill_qty = params.max_order_size;
             double fee = maker_fee(q.ask_px, ask_fill_qty, params.maker_fee_bps);
             fee_paid += fee;
             state.inventory -= ask_fill_qty;
@@ -611,6 +747,11 @@ static void write_summary_json(const std::string& path,
     fout << "    \"sigma_fallback\": " << params.sigma_fallback << ",\n";
     fout << "    \"toxic_pull_threshold\": " << params.toxic_pull_threshold << ",\n";
     fout << "    \"allow_one_sided_pull\": " << (params.allow_one_sided_pull ? "true" : "false") << ",\n";
+    fout << "    \"fill_model\": \"" << params.fill_model << "\",\n";
+    fout << "    \"pressure_source\": \"" << params.pressure_source << "\",\n";
+    fout << "    \"ofi_standardize\": " << (params.ofi_standardize ? "true" : "false") << ",\n";
+    fout << "    \"ofi_target_sd\": " << params.ofi_target_sd << ",\n";
+    fout << "    \"ofi_warmup_rows\": " << params.ofi_warmup_rows << ",\n";
     fout << "    \"seed\": " << params.seed << "\n";
     fout << "  },\n";
     fout << "  \"n_steps\": " << n << ",\n";
@@ -678,10 +819,22 @@ static MMParams parse_args(int argc, char** argv, std::string& input_csv, std::s
         else if (arg == "--risk-horizon-s") next_d(params.risk_horizon_s);
         else if (arg == "--sigma-fallback") next_d(params.sigma_fallback);
         else if (arg == "--toxic-pull-threshold") next_d(params.toxic_pull_threshold);
+        else if (arg == "--fill-model") next_s(params.fill_model);
+        else if (arg == "--trades") next_s(params.trades_csv);
+        else if (arg == "--pressure-source") next_s(params.pressure_source);
+        else if (arg == "--ofi-standardize") params.ofi_standardize = true;
+        else if (arg == "--ofi-target-sd") next_d(params.ofi_target_sd);
+        else if (arg == "--ofi-warmup-rows") next_i(params.ofi_warmup_rows);
         else throw std::runtime_error("Unknown argument: " + arg);
     }
 
     if (input_csv.empty()) throw std::runtime_error("Missing required --features <csv>");
+    if (params.fill_model != "parametric" && params.fill_model != "replay")
+        throw std::runtime_error("--fill-model must be parametric or replay");
+    if (params.fill_model == "replay" && params.trades_csv.empty())
+        throw std::runtime_error("--fill-model replay needs --trades <csv>");
+    if (params.pressure_source != "signal" && params.pressure_source != "ewma")
+        throw std::runtime_error("--pressure-source must be signal or ewma");
     return params;
 }
 
@@ -695,8 +848,14 @@ int main(int argc, char** argv) {
         std::cout << "Rows loaded: " << rows.size() << "\n";
 
         std::cout << "Running calibrated C++ event-driven market-making engine...\n";
+        TradeBuckets trades;
+        if (params.fill_model == "replay") {
+            trades = load_trades_csv(params.trades_csv);
+            std::cout << "Trade buckets loaded: " << trades.size() << "\n";
+        }
+
         EngineState state;
-        auto results = run_engine(rows, params, state);
+        auto results = run_engine(rows, params, state, params.fill_model == "replay" ? &trades : nullptr);
 
         std::filesystem::create_directories(outdir);
 

@@ -1,0 +1,5 @@
+config,signal,n_seeds,mean_diff,ci95_lo,ci95_hi
+calibrated (k=58),on,10,64.85790849999998,46.56647405644459,83.14934294355537
+calibrated (k=58),off,10,0.0,0.0,0.0
+legacy grid default (k=6),on,10,216.10143249999982,168.539356045714,263.66350895428565
+legacy grid default (k=6),off,10,0.0,0.0,0.0

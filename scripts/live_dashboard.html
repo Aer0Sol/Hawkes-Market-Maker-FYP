@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hawkes Flow Monitor</title>
+<style>
+/* Layout: an operator's monitor, flat. Deep-blue app bar, four headline readouts, charts on the left and the live scoreboard on the right; one column on narrow screens. Solid colours only, light mode only, by design. */
+:root {
+  --bg: #f6f5ef;          /* off-white ground */
+  --panel: #ffffff;
+  --ink: #0f1d3a;
+  --muted: #5b6478;
+  --rule: #e2e3da;
+  --grid: #eeeee7;
+  --deep: #0b2a6b;        /* deep blue: app bar, headings */
+  --blue: #1f5fe0;        /* blue: primary accent */
+  --blue-soft: #e8eefc;
+  --lime: #9bd31c;        /* lime: marks and fills (not text) */
+  --lime-ink: #4a7a0a;    /* lime dark enough for text */
+  --lime-soft: #eef8d8;
+  --buy: #12805a; --sell: #d23c2c;          /* semantic, kept green/red */
+  --hawkes: #1f5fe0; --event: #6fa80f; --ewma: #8b91a0;
+  --ok: #4a7a0a; --ok-soft: #eef8d8;
+  --warn: #8a5a00; --warn-soft: #faf0d6;
+  --bad: #b3261e; --bad-soft: #fbe6e3;
+  --font: "Roboto", "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "Roboto Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--ink); font: 400 14px/1.5 var(--font);
+  padding: max(14px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 28px max(16px, env(safe-area-inset-left, 0px));
+}
+.wrap { max-width: 1400px; margin: 0 auto; display: grid; gap: 14px; }
+
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 18px;
+  background: var(--deep); color: #ffffff; border-radius: 14px; }
+.mark { width: 22px; height: 22px; border-radius: 6px; flex: none; background: var(--lime); }
+h1 { font-size: 19px; font-weight: 600; margin: 0; letter-spacing: -.01em; color: #ffffff; }
+.sym { font-family: var(--mono); color: var(--deep); background: var(--lime); padding: 2px 8px; border-radius: 6px; font-size: 12.5px; font-weight: 500; }
+header .note { color: #c9d4ee; }
+.pill { font-size: 12px; font-weight: 600; padding: 4px 10px 4px 8px; border-radius: 99px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pill.ok { color: var(--deep); background: var(--lime); }
+.pill.ok::before { animation: pulse 1.6s ease-in-out infinite; }
+.pill.warn { color: var(--warn); background: var(--warn-soft); }
+.pill.bad { color: var(--bad); background: var(--bad-soft); }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+.note { color: var(--muted); font-size: 12.5px; }
+.spacer { flex: 1; }
+
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.kpi { background: var(--panel); border: 1px solid var(--rule); border-top: 3px solid var(--blue); border-radius: 12px; padding: 12px 16px; min-width: 0; }
+.kpi .l { font-size: 11px; font-weight: 600; color: var(--blue); text-transform: uppercase; letter-spacing: .08em; }
+.kpi .v { font-family: var(--mono); font-size: 22px; font-weight: 500; color: var(--deep); font-variant-numeric: tabular-nums; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi .s { font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 14px; align-items: start; }
+.charts { display: grid; gap: 14px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 16px 18px 12px; min-width: 0; }
+.card h2 { font-size: 14px; font-weight: 600; margin: 0 0 4px; color: var(--deep); }
+.card .sub { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.legend i { display: inline-block; width: 16px; height: 0; border-top: 2.5px solid; vertical-align: middle; margin-right: 6px; }
+.legend i.dash { border-top-style: dashed; }
+canvas { width: 100%; height: 190px; display: block; }
+canvas.tall { height: 230px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 9px 6px; border-bottom: 1px solid var(--rule); text-align: right; font-variant-numeric: tabular-nums; }
+th:first-child, td:first-child { text-align: left; }
+th { font-size: 11px; color: var(--blue); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+tbody tr:last-child td { border-bottom: 0; }
+td.m { font-family: var(--mono); font-size: 12.5px; color: var(--deep); }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 7px; vertical-align: -1px; }
+.gain { margin-top: 12px; display: grid; gap: 6px; }
+.gain div { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; background: var(--blue-soft); padding: 7px 10px; border-radius: 8px; }
+.gain .m { font-family: var(--mono); font-weight: 500; }
+.pos { color: var(--lime-ink); } .neg { color: var(--bad); }
+.money { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+#pnl-body td:first-child { white-space: nowrap; }
+.about { font-size: 12.5px; color: var(--muted); line-height: 1.6; }
+.about p { margin: 0 0 8px; }
+.about strong { color: var(--deep); }
+.empty { color: var(--muted); font-size: 13px; padding: 30px 0; text-align: center; }
+@media (prefers-reduced-motion: reduce) { .pill.ok::before { animation: none; } }
+@media (max-width: 1000px) { .main { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } canvas { height: 160px; } .kpi .v { font-size: 19px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <span class="mark" aria-hidden="true"></span>
+    <h1>Hawkes Flow Monitor</h1>
+    <span class="sym" id="sym">BTCUSDT</span>
+    <span class="pill warn" id="status">Connecting</span>
+    <span class="note" id="mode"></span>
+    <span class="spacer"></span>
+    <span class="note">Paper only. This page sends no orders.</span>
+  </header>
+
+  <section class="kpis" aria-label="Headline readouts">
+    <div class="kpi"><div class="l">Last trade</div><div class="v" id="k-last">—</div><div class="s" id="k-ret">—</div></div>
+    <div class="kpi"><div class="l">Best bid / ask</div><div class="v" id="k-ba">—</div><div class="s" id="k-spread">—</div></div>
+    <div class="kpi"><div class="l">Trades this second</div><div class="v" id="k-trades">—</div><div class="s" id="k-trades-s">—</div></div>
+    <div class="kpi"><div class="l">Seconds scored</div><div class="v" id="k-n">0</div><div class="s" id="k-n-s">predictions checked against the next second</div></div>
+  </section>
+
+  <div class="main">
+    <div class="charts">
+      <div class="card">
+        <h2>Price</h2>
+        <div class="sub">Last trade each second, with the best bid and ask (last 10 minutes)</div>
+        <canvas id="c-price" class="tall" aria-label="Price chart"></canvas>
+      </div>
+      <div class="card">
+        <h2>Order-flow intensity (events per second)</h2>
+        <div class="legend"><span><i style="border-color:var(--buy)"></i>Hawkes buy λ</span><span><i style="border-color:var(--sell)"></i>Hawkes sell λ</span><span><i class="dash" style="border-color:var(--buy)"></i>EWMA buy</span><span><i class="dash" style="border-color:var(--sell)"></i>EWMA sell</span></div>
+        <canvas id="c-int" aria-label="Intensity chart"></canvas>
+      </div>
+      <div class="card">
+        <h2>Order-flow imbalance</h2>
+        <div class="legend"><span><i style="border-color:var(--hawkes)"></i>Hawkes OFI</span><span><i style="border-color:var(--ewma)"></i>EWMA OFI</span><span><i style="border-color:var(--event)"></i>Event-time OFI (0.1 s half-life)</span></div>
+        <canvas id="c-ofi" aria-label="Imbalance chart"></canvas>
+      </div>
+    </div>
+
+    <aside class="charts">
+      <div class="card">
+        <h2>Live scoreboard</h2>
+        <div class="sub">Each model forecasts the next second's return; the forecast is scored when that second closes. Hit rate counts seconds where the price moved by more than a bid-ask bounce (1.5 ticks).</div>
+        <table>
+          <thead><tr><th>Model</th><th>Hit rate</th><th>95% CI</th><th>R²</th></tr></thead>
+          <tbody id="score-body"><tr><td colspan="4" class="empty">Scoring starts after 60 s of warm-up for the volatility feature.</td></tr></tbody>
+        </table>
+        <div class="gain" id="gain"></div>
+      </div>
+      <div class="card">
+        <h2>Paper P&amp;L: trade the forecast</h2>
+        <div class="sub" id="pnl-sub">Each model holds a long or short position by the sign of its forecast and trades only when the sign flips. Paper only.</div>
+        <table>
+          <thead><tr><th>Model</th><th>Pos</th><th>Gross</th><th>Fees</th><th>Net</th></tr></thead>
+          <tbody id="pnl-body"><tr><td colspan="5" class="empty">Starts with the first scored second.</td></tr></tbody>
+        </table>
+        <div class="legend" style="margin-top:10px"><span><i style="border-color:var(--ewma)"></i>Baseline</span><span><i style="border-color:var(--hawkes)"></i>+Hawkes</span><span><i style="border-color:var(--event)"></i>+Event-time</span><span><i class="dash" style="border-color:var(--muted)"></i>before fees</span></div>
+        <canvas id="c-pnl" aria-label="Paper profit and loss chart"></canvas>
+      </div>
+      <div class="card">
+        <h2>Hit rate over time</h2>
+        <div class="legend"><span><i style="border-color:var(--ewma)"></i>Baseline</span><span><i style="border-color:var(--hawkes)"></i>+Hawkes</span><span><i style="border-color:var(--event)"></i>+Event-time</span></div>
+        <canvas id="c-hit" aria-label="Cumulative hit rate chart"></canvas>
+      </div>
+      <div class="card about">
+        <p><strong>What this is.</strong> The models are the ridge regressions from step 6 of the project, trained offline on one historical BTCUSDT day and applied here unchanged. The Hawkes intensity is the one-step-ahead forecast with the parameters fitted that day.</p>
+        <p><strong>How to read it.</strong> A few minutes of scores is noise; offline, the gain was 1–3 percentage points over whole days. The CI is per model; the gain lines ignore serial correlation, so treat them as indicative.</p>
+        <p id="model-info"></p>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+(() => {
+  const WINDOW = 600;
+  const rows = [];
+  const hitHist = [];
+  const MODELS = [["baseline_ewma", "Baseline", "--ewma"], ["with_hawkes", "+Hawkes", "--hawkes"], ["event_time", "+Event-time", "--event"]];
+  const $ = id => document.getElementById(id);
+  const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const fmt = (v, d = 2) => v == null || Number.isNaN(v) ? "—" : v.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+
+  // Round tick step for a range: 1, 2, 2.5 or 5 times a power of ten.
+  function niceStep(range, target) {
+    const raw = range / Math.max(target, 1);
+    const p = Math.pow(10, Math.floor(Math.log10(raw)));
+    const m = [1, 2, 2.5, 5, 10].find(k => k * p >= raw);
+    return m * p;
+  }
+  // Round time step in ms: 5 s up to 1 h.
+  const TIME_STEPS = [5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600].map(s => s * 1000);
+
+  function chart(canvas, series, opts = {}) {
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w || !h) return;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    const g = canvas.getContext("2d");
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+    const mono = css("--mono") || "monospace";
+    g.font = "11px " + mono;
+    const pts = series.flatMap(s => s.data.filter(p => p[1] != null && Number.isFinite(p[1])));
+    if (pts.length < 2) {
+      g.fillStyle = css("--muted"); g.font = "12px " + css("--font");
+      g.fillText("Waiting for data…", 12, h / 2); return;
+    }
+
+    // y range and round ticks
+    let y0 = opts.y0 ?? Math.min(...pts.map(p => p[1])), y1 = opts.y1 ?? Math.max(...pts.map(p => p[1]));
+    if (y1 - y0 < 1e-12) { const c = y0; y0 = c - (Math.abs(c) || 1) * 0.01; y1 = c + (Math.abs(c) || 1) * 0.01; }
+    const yStep = niceStep(y1 - y0, Math.max(3, Math.floor(h / 45)));
+    y0 = Math.floor(y0 / yStep) * yStep; y1 = Math.ceil(y1 / yStep) * yStep;
+    const yTicks = [];
+    const nTicks = Math.round((y1 - y0) / yStep);
+    for (let i = 0; i <= nTicks; i++) { const v = y0 + i * yStep; yTicks.push(Math.abs(v) < yStep * 1e-9 ? 0 : v); }
+    const yFmt = opts.yFmt || (v => v.toFixed(2));
+
+    // margins sized from the labels
+    const T = 10, B = 24, R = 14;
+    const L = Math.ceil(Math.max(...yTicks.map(v => g.measureText(yFmt(v, yStep)).width))) + 14;
+    let x0 = Math.min(...pts.map(p => p[0])), x1 = Math.max(...pts.map(p => p[0]));
+    if (x1 === x0) x1 = x0 + 1000;
+    const X = t => L + (t - x0) / (x1 - x0) * (w - L - R);
+    const Y = v => T + (1 - (v - y0) / (y1 - y0)) * (h - T - B);
+
+    // grid + y labels
+    g.lineWidth = 1; g.strokeStyle = css("--grid"); g.fillStyle = css("--muted");
+    g.textAlign = "right"; g.textBaseline = "middle";
+    for (const v of yTicks) {
+      const y = Math.round(Y(v)) + 0.5;
+      g.beginPath(); g.moveTo(L, y); g.lineTo(w - R, y); g.stroke();
+      g.fillText(yFmt(v, yStep), L - 8, y);
+    }
+    if (opts.zero && y0 < 0 && y1 > 0) {
+      g.strokeStyle = css("--muted"); const y = Math.round(Y(0)) + 0.5;
+      g.beginPath(); g.moveTo(L, y); g.lineTo(w - R, y); g.stroke();
+    }
+
+    // x labels: round times, spaced so they never overlap
+    const sample = g.measureText("00:00:00").width + 18;
+    const maxLabels = Math.max(2, Math.floor((w - L - R) / sample));
+    const step = TIME_STEPS.find(s => (x1 - x0) / s <= maxLabels) || TIME_STEPS[TIME_STEPS.length - 1];
+    const fmtT = t => new Date(t).toISOString().slice(11, step >= 60000 ? 16 : 19);
+    g.textAlign = "center"; g.textBaseline = "top";
+    let lastRight = -Infinity;
+    for (let t = Math.ceil(x0 / step) * step; t <= x1; t += step) {
+      const label = fmtT(t), half = g.measureText(label).width / 2, x = X(t);
+      if (x - half < L - 4 || x + half > w - 2 || x - half < lastRight + 10) continue;
+      g.strokeStyle = css("--rule"); g.beginPath(); g.moveTo(Math.round(x) + 0.5, h - B); g.lineTo(Math.round(x) + 0.5, h - B + 4); g.stroke();
+      g.fillText(label, x, h - B + 7);
+      lastRight = x + half;
+    }
+
+    // series, clipped to the plot area
+    g.save(); g.beginPath(); g.rect(L, T - 2, w - L - R, h - T - B + 4); g.clip();
+    for (const s of series) {
+      g.strokeStyle = css(s.color); g.lineWidth = s.width || 1.6; g.setLineDash(s.dash ? [5, 4] : []);
+      g.lineJoin = "round"; g.beginPath(); let started = false;
+      for (const [t, v] of s.data) {
+        if (v == null || !Number.isFinite(v)) { started = false; continue; }
+        if (!started) { g.moveTo(X(t), Y(v)); started = true; } else g.lineTo(X(t), Y(v));
+      }
+      g.stroke();
+    }
+    g.restore();
+    g.setLineDash([]);
+    for (const s of series) {
+      if (s.dot === false) continue;
+      const last = [...s.data].reverse().find(p => p[1] != null && Number.isFinite(p[1]));
+      if (last) { g.fillStyle = css(s.color); g.beginPath(); g.arc(X(last[0]), Y(last[1]), 3, 0, 7); g.fill(); }
+    }
+  }
+
+  // Tick label formatters: decimals follow the tick step, so labels stay short and round.
+  const dec = step => {
+    let d = Math.max(0, -Math.floor(Math.log10(step) + 1e-9));
+    while (d < 8 && Math.abs(step * 10 ** d - Math.round(step * 10 ** d)) > 1e-6) d++;
+    return d;
+  };
+  const fmtNum = (v, step) => v.toFixed(dec(step));
+  const fmtPct = (v, step) => (100 * v).toFixed(dec(step * 100)) + "%";
+  const fmtUsd = (v, step) => (v < 0 ? "−$" : "$") + Math.abs(v).toFixed(dec(step));
+
+  function redraw() {
+    const r = rows.slice(-WINDOW);
+    const S = k => r.map(x => [x.t, x[k]]);
+    chart($("c-price"), [
+      { data: S("bid"), color: "--buy", width: 1, dot: false },
+      { data: S("ask"), color: "--sell", width: 1, dot: false },
+      { data: S("last"), color: "--ink", width: 1.8 },
+    ], { yFmt: fmtNum });
+    chart($("c-int"), [
+      { data: S("lam_b"), color: "--buy" }, { data: S("lam_s"), color: "--sell" },
+      { data: S("ewm_b"), color: "--buy", dash: true, width: 1.2, dot: false },
+      { data: S("ewm_s"), color: "--sell", dash: true, width: 1.2, dot: false },
+    ], { yFmt: fmtNum });
+    chart($("c-ofi"), [
+      { data: S("et_ofi_fast"), color: "--event", width: 1 },
+      { data: S("ewma_ofi"), color: "--ewma" }, { data: S("hawkes_ofi"), color: "--hawkes" },
+    ], { yFmt: fmtNum, zero: true });
+    chart($("c-hit"), MODELS.map(([k, , c]) => ({ data: hitHist.map(h => [h.t, h[k]]), color: c })),
+      { yFmt: fmtPct });
+    const pr = r.filter(x => x.pnl_net);
+    chart($("c-pnl"), [
+      ...MODELS.map(([k, , c]) => ({ data: pr.map(x => [x.t, x.pnl_gross[k]]), color: c, dash: true, width: 1, dot: false })),
+      ...MODELS.map(([k, , c]) => ({ data: pr.map(x => [x.t, x.pnl_net[k]]), color: c })),
+    ], { yFmt: fmtUsd, zero: true });
+  }
+
+  function setStatus(st) {
+    const el = $("status");
+    if (!st) { el.className = "pill bad"; el.textContent = "Disconnected from monitor"; return; }
+    if (st.mode === "replay") {
+      el.className = st.connected ? "pill warn" : "pill bad";
+      el.textContent = st.connected ? "Replay" : (st.error || "Replay finished");
+    } else if (st.connected) { el.className = "pill ok"; el.textContent = "Live"; }
+    else { el.className = "pill bad"; el.textContent = "Reconnecting" + (st.error ? ": " + st.error : ""); }
+    $("mode").textContent = st.mode === "replay" ? "historical file replayed through the live code path" : "Binance public stream, no API key";
+    $("sym").textContent = st.symbol;
+  }
+
+  function onRow(row, scores, msg) {
+    rows.push(row); if (rows.length > 3600) rows.shift();
+    const spread = row.ask != null && row.bid != null ? row.ask - row.bid : null;
+    $("k-last").textContent = fmt(row.last);
+    $("k-ret").textContent = row.ret == null ? "—" : (row.ret >= 0 ? "+" : "") + (row.ret * 1e4).toFixed(2) + " bp over 1 s";
+    $("k-ba").textContent = row.bid == null ? "—" : fmt(row.bid) + " / " + fmt(row.ask);
+    $("k-spread").textContent = spread == null ? "no book in replay" : "spread " + fmt(spread) + " (" + (1e4 * spread / row.last).toFixed(4) + " bp)";
+    $("k-trades").innerHTML = `<span style="color:var(--buy)">${row.n_buy}</span> / <span style="color:var(--sell)">${row.n_sell}</span>`;
+    $("k-trades-s").textContent = "buy / sell aggressor" + (msg && msg.late_trades ? ` · ${msg.late_trades} late` : "");
+    if (scores) updateScores(scores, row.t);
+  }
+
+  const usd = v => { const d = Math.abs(v) >= 1000 ? 0 : 2; return (v < 0 ? "−$" : "$") + Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d }); };
+  function updatePnl(pp) {
+    if (!pp) return;
+    $("pnl-sub").textContent = `Each model holds ${usd(pp.notional)} long or short by the sign of its 1 s forecast, trading only when the sign flips, and pays ${pp.fee_bps} bp per side (Binance standard taker fee). Paper only.`;
+    $("pnl-body").innerHTML = MODELS.map(([k, label, c]) => {
+      const x = pp[k];
+      const cls = v => v > 0 ? "pos" : v < 0 ? "neg" : "";
+      return `<tr><td><span class="sw" style="background:var(${c})"></span>${label}</td>
+        <td class="money">${x.pos > 0 ? "long" : x.pos < 0 ? "short" : "flat"}</td>
+        <td class="money ${cls(x.gross)}">${usd(x.gross)}</td>
+        <td class="money">${usd(x.fees)}</td>
+        <td class="money ${cls(x.net)}"><strong>${usd(x.net)}</strong></td></tr>`;
+    }).join("");
+  }
+
+  function updateScores(sc, t) {
+    updatePnl(sc.paper);
+    const base = sc.baseline_ewma;
+    $("k-n").textContent = (base?.n || 0).toLocaleString();
+    $("k-n-s").textContent = base?.n ? `${base.n_nonzero.toLocaleString()} with a real move (> 1.5 ticks)` : "predictions checked against the next second";
+    if (!base || !base.n) return;
+    $("score-body").innerHTML = MODELS.map(([k, label, c]) => {
+      const s = sc[k];
+      return `<tr><td><span class="sw" style="background:var(${c})"></span>${label}</td>
+        <td class="m">${s.hit == null ? "—" : (100 * s.hit).toFixed(1) + "%"}</td>
+        <td class="m">${s.hit_lo == null ? "—" : (100 * s.hit_lo).toFixed(1) + "–" + (100 * s.hit_hi).toFixed(1)}</td>
+        <td class="m">${s.r2 == null ? "—" : s.r2.toFixed(3)}</td></tr>`;
+    }).join("");
+    $("gain").innerHTML = MODELS.slice(1).map(([k, label]) => {
+      const s = sc[k];
+      if (s.hit == null || base.hit == null) return "";
+      const g = 100 * (s.hit - base.hit);
+      return `<div><span>${label} vs baseline, hit rate</span><span class="m ${g > 0 ? "pos" : g < 0 ? "neg" : ""}">${g >= 0 ? "+" : ""}${g.toFixed(2)} pp</span></div>`;
+    }).join("");
+    hitHist.push({ t, ...Object.fromEntries(MODELS.map(([k]) => [k, sc[k].hit])) });
+    if (hitHist.length > 3600) hitHist.shift();
+  }
+
+  function connect() {
+    const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws");
+    ws.onmessage = ev => {
+      const msg = JSON.parse(ev.data);
+      if (msg.type === "init") {
+        rows.length = 0; hitHist.length = 0;
+        msg.history.forEach(r => onRow(r, null));
+        if (msg.scores) updateScores(msg.scores, msg.history.length ? msg.history[msg.history.length - 1].t : Date.now());
+        setStatus(msg.status);
+        const h = msg.model.hawkes;
+        $("model-info").textContent = `Models trained on ${msg.model.symbol} ${msg.model.trained_on}. Hawkes β = ${h.beta.toFixed(3)} per second (half-life ${(Math.log(0.5) / Math.log(h.beta)).toFixed(1)} s).`;
+      } else if (msg.type === "tick") {
+        onRow(msg.row, msg.scores, msg); setStatus(msg.status);
+      }
+      redraw();
+    };
+    ws.onclose = () => { setStatus(null); setTimeout(connect, 2000); };
+  }
+  new ResizeObserver(redraw).observe(document.querySelector(".wrap"));
+    connect();
+})();
+</script>
+</body>
+</html>
