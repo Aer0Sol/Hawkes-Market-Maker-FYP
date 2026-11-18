@@ -341,7 +341,7 @@ table.data td, table.data th { padding: 9px 10px; white-space: nowrap; }
   const hitHist = [];
   const ALL_MODELS = [["baseline_ewma", "Baseline", "--ewma"], ["with_hawkes", "+Hawkes", "--hawkes"], ["event_time", "+Event-time", "--event"], ["hawkes_ensemble", "Hawkes ensemble", "--ens"]];
   let MODELS = ALL_MODELS.slice(0, 3);
-  // Books each family actually runs (the monitor prunes models per family; see docs/strategy_validation.md).
+  // Books each family actually runs (the monitor sets the models per family: FAMILY_MODELS).
   const KEYS = { taker: null, maker: null, exec: null, featured: null };
   let HAS_EV = false;   // event-driven books exist when the model carries the exact Hawkes fit
   function noteKeys(sc) {

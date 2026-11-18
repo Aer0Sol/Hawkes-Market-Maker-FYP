@@ -1,4 +1,4 @@
-# Licensed raw market data (Databento) — never commit. See docs/data.md.
+# Licensed raw market data (Databento) — never commit. Fetched by scripts/download_script.py.
 data/
 
 # Secrets

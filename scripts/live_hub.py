@@ -2,7 +2,7 @@
 
 Each pair in config/live_pairs.json is its own scripts/live_monitor.py process (own Binance stream, port,
 paper books and recording), so pairs run in parallel and one crashing does not stop the others. The hub
-only reads their /health endpoints; it never places orders and has no keys (docs/plan.md section 0.2).
+only reads their /health endpoints; it never places orders and has no keys (paper only).
 
   uv run --group live python scripts/live_hub.py start     # start every managed pair not already running
   uv run --group live python scripts/live_hub.py serve     # hub page on http://127.0.0.1:8800/

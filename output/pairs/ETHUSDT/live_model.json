@@ -332,6 +332,6 @@
   ],
   "display": {
     "exec_model": "hawkes_ensemble",
-    "source": "output/validation/exec_model_choice.json (6 test days, live-code replay, fast Hawkes execution)"
+    "source": "output/validation/exec_model_choice.json"
   }
 }

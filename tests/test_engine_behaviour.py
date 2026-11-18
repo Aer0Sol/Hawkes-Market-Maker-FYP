@@ -1,4 +1,4 @@
-"""Engine behaviour on small synthetic feature tables (fixed semantics, see docs/changes.md)."""
+"""Engine behaviour on small synthetic feature tables (fixed semantics)."""
 
 from __future__ import annotations
 

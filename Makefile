@@ -1,7 +1,7 @@
 # Hawkes Market Maker — reproducible pipeline.
 #
 #   make all          engine + diagnostics + analysis (+ features/hawkes when raw data is present)
-#   make features     step 1 (needs data/databento/*.csv, see docs/data.md)
+#   make features     step 1 (needs data/databento/*.csv, see scripts/download_script.py)
 #   make hawkes       step 2 (needs raw trades)
 #   make build        compile bin/step3_mm
 #   make engine       run the engine once on the default config
@@ -19,7 +19,7 @@
 #   make execution    step 8: does the order-flow forecast make a forced trade cheaper? (6 BTCUSDT test days)
 #   make reconcile DATE=YYYY-MM-DD  live paper maker fills vs the engine's per-second replay of that session
 #   make train-pairs  download a week of 8 more Binance pairs and train + cross-day-validate their models
-#   make validate-strategies  replay every test day through the live code: docs/strategy_validation.md
+#   make validate-strategies  replay every test day through the live code: output/validation/
 #   make hub          start every pair's live monitor (never the original BTCUSDT one) and the hub on :8800
 #   make test         lint + pytest
 #   make bench        engine throughput/latency benchmark
@@ -44,13 +44,13 @@ HAVE_RAW := $(and $(wildcard $(RAW_MBP)),$(wildcard $(RAW_TRD)))
 
 ifeq ($(HAVE_RAW),)
 all: engine diagnostics analysis fixed alpha
-	@echo "NOTE: raw Databento data not found; steps 1-2 used the committed outputs in output/. See docs/data.md."
+	@echo "NOTE: raw Databento data not found; steps 1-2 used the committed outputs in output/. See scripts/download_script.py."
 else
 all: features hawkes engine diagnostics analysis fixed alpha
 endif
 
 check-raw:
-	@test -n "$(HAVE_RAW)" || { echo "Raw data missing: $(RAW_MBP), $(RAW_TRD). See docs/data.md."; exit 1; }
+	@test -n "$(HAVE_RAW)" || { echo "Raw data missing: $(RAW_MBP), $(RAW_TRD). See scripts/download_script.py."; exit 1; }
 
 features: check-raw
 	$(PY) scripts/step1_build_feature_table.py --mbp $(RAW_MBP) --trades $(RAW_TRD) --outdir $(STEP1_OUT)
@@ -106,7 +106,7 @@ train-pairs:
 validate-strategies:
 	uv run --frozen --group live python scripts/validate_live_strategies.py --symbol BTCUSDT --dates $(BINANCE_DATES)
 	printf "%s\\n" $(PAIRS) | xargs -P 4 -I{} uv run --frozen --group live python scripts/validate_live_strategies.py --symbol {} --dates $(PAIR_DATES)
-	$(PY) scripts/report_validation.py
+	$(PY) scripts/summarise_validation.py
 
 hub:
 	uv run --frozen --group live python scripts/live_hub.py start

@@ -220,25 +220,6 @@ def main():
     with open(BENCH_DIR / "benchmark_summary.json", "w") as f:
         json.dump(safe_summary, f, indent=2)
 
-    md = []
-    md.append("# Step 3 Engine Benchmark")
-    md.append("")
-    md.append(f"- Measured runs: {safe_summary['n_measured_runs']}")
-    md.append(f"- Mean wall time: {safe_summary['wall_ms_mean']:.3f} ms")
-    md.append(f"- Median wall time: {safe_summary['wall_ms_median']:.3f} ms")
-    md.append(f"- p95 wall time: {safe_summary['wall_ms_p95']:.3f} ms")
-    md.append(f"- Mean throughput: {safe_summary['throughput_eps_mean']:.2f} events/sec")
-    md.append(f"- Median throughput: {safe_summary['throughput_eps_median']:.2f} events/sec")
-    rss = safe_summary["peak_rss_kb_mean"]
-    md.append(f"- Mean peak RSS: {rss:.2f} KB" if rss is not None else "- Mean peak RSS: n/a (GNU time not installed)")
-    md.append(f"- Median engine p50 latency: {safe_summary['engine_p50_us_median']:.6f} us")
-    md.append(f"- Median engine p95 latency: {safe_summary['engine_p95_us_median']:.6f} us")
-    md.append(f"- Median engine p99 latency: {safe_summary['engine_p99_us_median']:.6f} us")
-    md.append(f"- Worst observed engine max latency: {safe_summary['engine_max_us_max']:.6f} us")
-    md.append(f"- Total latency budget exceedances: {int(safe_summary['latency_budget_exceeded_total'])}")
-
-    (ROOT / "docs").mkdir(exist_ok=True)
-    (ROOT / "docs" / "benchmark_report.md").write_text("\n".join(md))
 
     print("\nBenchmark complete.")
     print(json.dumps(safe_summary, indent=2))

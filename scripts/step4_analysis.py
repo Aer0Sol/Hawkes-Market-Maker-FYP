@@ -473,61 +473,6 @@ def build_regime_master(regime_seed: pd.DataFrame):
     return regime_master
 
 
-def write_report(master_df: pd.DataFrame, seed_df: pd.DataFrame, paired: pd.DataFrame, ablation: pd.DataFrame):
-    n_configs = seed_df[["model_type", "A", "k"]].drop_duplicates().shape[0] + 2 * len(ablation)
-    n_trials = seed_df[["model_type", "A", "k", "seed"]].drop_duplicates().shape[0] + 2 * len(SEEDS) * len(ablation)
-    best = master_df.iloc[0]
-    best_hawkes = master_df[master_df["use_hawkes"] == True].iloc[0]
-    best_baseline = master_df[master_df["use_hawkes"] == False].iloc[0]
-    grid_master = master_df[master_df["config_kind"] == "grid"]
-
-    lines = ["STEP 4 COMPLETE", ""]
-    lines.append("Data: AAPL 2024-06-03, one session (23,400 one-second rows). In-sample; no holdout.")
-    lines.append(f"Trials: {n_configs} trading configurations x {len(SEEDS)} seeds = {n_trials} engine runs, "
-                 f"including the ablation (markout horizons {MARKOUT_GRID} re-measure the same runs).")
-    lines.append(f"Seeds: {SEEDS}. All numbers below are seed means unless stated.")
-    lines.append("")
-    lines.append(f"Overall best config (by mean risk-adjusted score): {best['run_id']}")
-    lines.append(f"  mean final MTM PnL {best['final_mtm_pnl']:.2f} (seed std {best['final_mtm_pnl_seed_std']:.2f})")
-    lines.append(f"  median config final PnL across all configs: {master_df['final_mtm_pnl'].median():.2f}")
-    lines.append("")
-    for label, b in (("Best Hawkes config", best_hawkes), ("Best Baseline config", best_baseline)):
-        lines.append(label)
-        lines.append(f"  run_id: {b['run_id']}")
-        lines.append(f"  final_mtm_pnl: {b['final_mtm_pnl']:.2f} (seed std {b['final_mtm_pnl_seed_std']:.2f})")
-        lines.append(f"  risk_adjusted_score: {b['risk_adjusted_score']:.2f}")
-        lines.append(f"  avg_markout_all_fills: {b['avg_markout_all_fills']:.6f} (positive = profitable)")
-        lines.append("")
-
-    lines.append("Hawkes minus baseline final PnL, paired on (A, k, seed), 95% t-interval over seeds:")
-    for _, r in paired.iterrows():
-        sig = "excludes 0" if (r["ci95_lo"] > 0 or r["ci95_hi"] < 0) else "includes 0"
-        lines.append(f"  [{r['config_kind']:10s}] A={r['A']:<6} k={r['k']:<6} diff={r['mean_diff']:9.2f} "
-                     f"CI=[{r['ci95_lo']:9.2f}, {r['ci95_hi']:9.2f}] ({sig}); "
-                     f"hawkes better in {r['share_seeds_hawkes_better']:.0%} of seeds")
-    lines.append("")
-    lines.append("Ablation: same comparison with the OFI signal unused in quoting (no toxicity logic, no OFI skew):")
-    for _, r in ablation.iterrows():
-        sig = "excludes 0" if (r["ci95_lo"] > 0 or r["ci95_hi"] < 0) else "includes 0"
-        lines.append(f"  [{r['config_kind']:10s}] A={r['A']:<6} k={r['k']:<6} diff={r['mean_diff']:9.2f} "
-                     f"CI=[{r['ci95_lo']:9.2f}, {r['ci95_hi']:9.2f}] ({sig})")
-    lines.append("  Whatever gap remains here comes only from the Hawkes intensity entering the simulated fill rate.")
-    lines.append("")
-    lines.append("Grid aggregate (original A/k grid only):")
-    for mt, g in grid_master.groupby("model_type"):
-        lines.append(f"  {mt}: mean_final_mtm_pnl={g['final_mtm_pnl'].mean():.2f}, "
-                     f"median={g['final_mtm_pnl'].median():.2f}, "
-                     f"mean_avg_markout_all_fills={g['avg_markout_all_fills'].mean():.6f}")
-    lines.append("")
-    lines.append("Caveats: fills are simulated by a parametric model that also consumes the Hawkes intensity, so")
-    lines.append("the comparison is partly circular; one day of data; the CI covers fill-simulation noise only,")
-    lines.append("not day-to-day market variation. See README 'Limitations'.")
-
-    with open(OUT_ROOT / "step4_report.txt", "w") as f:
-        f.write("\n".join(lines) + "\n")
-    print("\n".join(lines))
-
-
 def main():
     if not STEP3_BIN.exists():
         raise FileNotFoundError(f"Missing Step 3 binary: {STEP3_BIN} (run `make build`)")
@@ -537,7 +482,7 @@ def main():
     ensure_dir(OUT_ROOT)
     seed_df, regime_seed, plot_results = build_seed_table()
     master_df = build_master_table(seed_df)
-    paired = paired_comparison(seed_df)
+    paired_comparison(seed_df)            # writes step4_hawkes_vs_baseline_paired.csv
     build_regime_master(regime_seed)
 
     plot_top_pnl_paths(master_df, plot_results, OUT_ROOT)
@@ -545,8 +490,7 @@ def main():
     plot_heatmap(master_df[master_df["config_kind"] == "grid"], OUT_ROOT, use_hawkes=False)
     plot_markout_by_horizon(master_df, OUT_ROOT)
     plot_hawkes_vs_baseline_box(master_df[master_df["config_kind"] == "grid"], OUT_ROOT)
-    ablation = signal_off_ablation()
-    write_report(master_df, seed_df, paired, ablation)
+    signal_off_ablation()                 # writes step4_ablation_signal_off.csv
 
 
 if __name__ == "__main__":

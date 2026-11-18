@@ -43,7 +43,7 @@ STREAM_URL = "wss://stream.binance.com:9443/stream?streams={s}@aggTrade/{s}@book
 GRACE_MS = 300          # wait this long past a second's end for late trades before closing it
 HISTORY = 900           # seconds kept for the dashboard
 MODEL_NAMES = ("baseline_ewma", "with_hawkes", "event_time", "hawkes_ensemble")  # those present in live_model.json run
-# Which models drive which strategy family (docs/strategy_validation.md has the out-of-sample replay of each);
+# Which models drive which strategy family (scripts/validate_live_strategies.py replays each out of sample);
 # execution also marks the Hawkes model that validated best per pair (display.exec_model).
 # Execution drops +Event-time: in the replay it never beat the ensemble's execution, whose signal contains it.
 FAMILY_MODELS = {"taker": MODEL_NAMES, "maker": MODEL_NAMES,

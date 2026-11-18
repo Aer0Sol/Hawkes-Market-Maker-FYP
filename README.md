@@ -1,6 +1,6 @@
 # Hawkes Market Maker
 
-Hawkes Market Maker is a low-latency market-making research and engineering project that combines microstructure-driven feature engineering, Hawkes-process order flow modeling, and an event-driven C++ quoting engine into one end-to-end pipeline. The project starts from raw market data, builds replayable features, calibrates Hawkes intensities, runs a queue- and toxicity-aware market-making engine, and then evaluates the strategy against a baseline through PnL, markout, regime, and latency analysis. For what changed relative to the original version (several engine bugs fixed, labels corrected, fill model calibrated, multi-seed evaluation), see [`docs/changes.md`](docs/changes.md). The Hawkes calibration diagnostics are in [`docs/hawkes_calibration.md`](docs/hawkes_calibration.md). The original write-up, [`docs/Report.md`](docs/Report.md), predates these fixes.
+Hawkes Market Maker is a low-latency market-making research and engineering project that combines microstructure-driven feature engineering, Hawkes-process order flow modeling, and an event-driven C++ quoting engine into one end-to-end pipeline. The project starts from raw market data, builds replayable features, calibrates Hawkes intensities, runs a queue- and toxicity-aware market-making engine, and then evaluates the strategy against a baseline through PnL, markout, regime, and latency analysis. Relative to the original version, several engine bugs were fixed, labels corrected, the fill model calibrated and the evaluation made multi-seed. The Hawkes calibration diagnostics are in `output/hawkes_diagnostics/`.
 
 ## Why this project
 
@@ -68,7 +68,7 @@ This stage aggregates run outputs into comparative summaries and plots. It is wh
 - `output/step4_analysis/step4_master_summary.csv`
 - `output/step4_analysis/step4_regime_aggregate.csv`
 - `output/step4_analysis/step4_regime_master.csv`
-- `output/step4_analysis/step4_report.txt`
+- `output/step4_analysis/step4_hawkes_vs_baseline_paired.csv`, `step4_ablation_signal_off.csv`
 - `output/step4_analysis/step4_top10_runs.csv`
 - `plots/`
 
@@ -86,7 +86,7 @@ in Hawkes runs the Hawkes intensity also sets the fill rate. `make fixed` remove
   price fills us in full. Trades at our price first consume the displayed queue ahead of us (FIFO, cancellations
   ignored, so conservative). There is no RNG and no fill model that the signal can influence.
 
-**Outputs:** `output/step2b_causal/`, `output/step4b_fixed/step4b_report.txt`, `step4b_paired.csv`
+**Outputs:** `output/step2b_causal/`, `output/step4b_fixed/step4b_paired.csv`, `step4b_replay_runs.csv`
 
 ### Step 5: Alpha-signal ablation (does Hawkes predict anything?)
 
@@ -97,16 +97,14 @@ regression predicts short-horizon price moves and next-second order flow from th
 the Hawkes features, and reports out-of-sample R², hit rate, and a markout-style economic value with confidence
 intervals. A third model swaps the 1 s Hawkes features for **event-time features**: exponentially decayed counts of
 buy and sell aggressor events at 0.1 s, 1 s and 10 s half-lives, computed from individual trade timestamps, so they
-see the millisecond clustering that 1 s buckets average away. See [`docs/alpha_signal.md`](docs/alpha_signal.md) for
-the method and the full result, including a literature check of whether an HJB + Hawkes optimal-control
-reformulation (arXiv:2510.26438) is a tractable next step.
+see the millisecond clustering that 1 s buckets average away. A literature check found that an HJB + Hawkes
+optimal-control reformulation (arXiv:2510.26438) is not a tractable next step: no closed form, no converged solver.
 
 **Outputs**
 
 - `output/step5_alpha_signal/step5_ablation_summary.csv`
 - `output/step5_alpha_signal/step5_fold_metrics.csv`
 - `output/step5_alpha_signal/step5_paired_significance.csv`, `step5_regime_breakdown.csv`
-- `docs/alpha_signal.md`
 - `plots/08_alpha_signal_oos_r2.png`
 
 ### Step 6: Multi-day validation (Binance BTCUSDT)
@@ -119,11 +117,10 @@ public with no API key (`scripts/download_binance.py`). It does three things:
 - **Cross-day test:** fit on day *d−1* and predict day *d*, then a t-test across the six test days. Days are close
   to independent, so this is the strongest evidence in the project.
 
-It also exports the models for the live monitor. Not part of `make all` (about 550 MB to download once). See
-[`docs/binance_validation.md`](docs/binance_validation.md). BTCUSDT 2024-07-01 to 07-07 is a recorded holdout
+It also exports the models for the live monitor. Not part of `make all` (about 550 MB to download once). BTCUSDT 2024-07-01 to 07-07 is a recorded holdout
 (`config/holdout.json`) that the scripts refuse to touch without `--allow-holdout`.
 
-**Outputs:** `output/step6_binance_validation/`, `docs/binance_validation.md`, `plots/09_binance_oos_r2.png`
+**Outputs:** `output/step6_binance_validation/`, `plots/09_binance_oos_r2.png`
 
 ### Step 7: Hawkes ensemble (the final model)
 
@@ -137,7 +134,7 @@ It also exports the models for the live monitor. Not part of `make all` (about 5
 
 Its ridge penalty is chosen by chronological cross-validation inside the training data. It is tested against
 every single-family model on the BTCUSDT cross-day test and on AAPL. The live monitor runs it.
-See [`docs/hawkes_ensemble.md`](docs/hawkes_ensemble.md).
+Outputs: `output/step7_hawkes_ensemble/`.
 
 ### Step 8: Execution (making a forced trade cheaper)
 
@@ -148,7 +145,7 @@ on the 6 out-of-sample days. Two strategies use each model's forecast:
 - **Passive:** rests at the best price as a maker, and crosses when the forecast turns against it or at the
   deadline.
 
-Benchmark: trade immediately. See [`docs/execution.md`](docs/execution.md).
+Benchmark: trade immediately. Outputs: `output/step8_execution/`.
 
 | Result (8,628 orders per strategy) | Saving vs trading immediately |
 |---|---|
@@ -200,7 +197,7 @@ through the engine's per-second fill rule and compares it with the live fills.
 
 First minutes: markouts are about −1 bp (fills come mostly when the price runs through the quote), so zero-fee P&L
 is negative for every book and fees are far larger. The A–S books trade about 8× less than the at-touch control and
-lose less. A full-day run is needed to compare the signals (`docs/plan.md` §8a).
+lose less. A full-day run is needed to compare the signals.
 
 ### More pairs, side by side (the hub)
 
@@ -224,8 +221,8 @@ every test day for ETH, SOL, BNB, XRP, DOGE and ADA (p < 0.0125, the Bonferroni 
 but not significant (p = 0.06). LINK was 5/6 and not significant. On the 1 s order-flow target the ensemble won
 6/6 days on every pair except XRP.
 
-**Every live strategy is also validated offline** (`make validate-strategies`, report in
-[`docs/strategy_validation.md`](docs/strategy_validation.md)): each test day is replayed trade by trade through the
+**Every live strategy is also validated offline** (`make validate-strategies`, results in `output/validation/`):
+each test day is replayed trade by trade through the
 live monitor's own code, with models built from the day before. Results that set the live configuration:
 - **Execution** is where the Hawkes signal earns money. Any signal beats passive-without-signal on 7/9 pairs; the
   best Hawkes model is pair-specific (ensemble on ETH, LINK, NEAR; 1 s Hawkes on XRP, DOGE). The choice per pair is
@@ -251,7 +248,7 @@ make live             # live dashboard on http://127.0.0.1:8765 (Ctrl-C to stop)
 ```
 
 The raw Databento files are licensed and not in the repo. Steps 1–2 run from the committed outputs unless the raw
-data is present; see [`docs/data.md`](docs/data.md). Individual targets: `make features | hawkes | build | engine
+data is present (`scripts/download_script.py` fetches it from Databento; it costs credits). Individual targets: `make features | hawkes | build | engine
 | diagnostics | analysis | causal | fixed | alpha | validate-binance | live | live-replay | plots | bench`.
 
 ## Repository structure
@@ -261,7 +258,7 @@ data is present; see [`docs/data.md`](docs/data.md). Individual targets: `make f
 ├── scripts/
 │   ├── step1_build_feature_table.py    # raw MBP-10 + trades -> 1 s feature table
 │   ├── step2_trade_label_and_hawkes.py # trade signs, counts, EWMA + discrete Hawkes intensities
-│   ├── hawkes_diagnostics.py           # calibration diagnostics -> docs/hawkes_calibration.md
+│   ├── hawkes_diagnostics.py           # calibration diagnostics -> output/hawkes_diagnostics/
 │   ├── calibrate_fill_model.py         # estimates the fill model's A, k from trades
 │   ├── step2b_causal_features.py       # walk-forward Hawkes, corrected labels, trade file for replay fills
 │   ├── step4_analysis.py               # original multi-seed sweep, paired Hawkes vs baseline, ablation
@@ -275,7 +272,7 @@ data is present; see [`docs/data.md`](docs/data.md). Individual targets: `make f
 │   ├── build_pair_model.py             # maker calibration + features for any Binance pair
 │   ├── train_pair.py                   # cross-day training/validation of every model for one pair
 │   ├── validate_live_strategies.py     # replays test days through the live code (every strategy)
-│   ├── report_validation.py            # -> docs/strategy_validation.md
+│   ├── summarise_validation.py         # summary CSVs + per-pair execution model (display.exec_model)
 │   ├── reconcile_live_maker.py         # live maker fills vs the engine's per-second fill rule
 │   ├── download_binance.py             # public Binance aggTrades (no key); enforces the holdout
 │   ├── live_monitor.py, live_dashboard.html  # one pair: collector, models, paper strategies, dashboard
@@ -286,12 +283,9 @@ data is present; see [`docs/data.md`](docs/data.md). Individual targets: `make f
 ├── output/                             # one folder per step; pairs/ (per-pair models), validation/
 ├── plots/  benchmark_results/
 ├── tests/                              # smoke, engine behaviour, no-look-ahead, gap-fix and live-parity tests
-├── docs/                               # changes.md, hawkes_calibration.md, alpha_signal.md, binance_validation.md,
-│                                       # hawkes_ensemble.md, execution.md, strategy_validation.md,
-│                                       # project_overview.html
+├── docs/                               # local notes and write-ups (git-ignored)
 ├── config/holdout.json, live_pairs.json  # recorded holdout; pairs, ports and models the hub runs
 ├── Makefile  pyproject.toml  uv.lock  .github/workflows/ci.yml
-└── (every other .md is in docs/: plan, context, data, benchmark report, original Report.md)
 ```
 
 ## Strategy design
@@ -317,7 +311,7 @@ This combination is important because it makes the simulator far more realistic 
 
 All numbers: AAPL, 2024-06-03, one session, in-sample, simulated fills. Mean over 10 seeds; 95% t-intervals on
 paired differences. 24 trading configurations × 10 seeds = 240 engine runs. Source:
-`output/step4_analysis/step4_report.txt`.
+`output/step4_analysis/step4_hawkes_vs_baseline_paired.csv`.
 
 ### Hawkes vs baseline
 
@@ -335,7 +329,7 @@ confounds described under step 4b. **These numbers are superseded by the correct
 ### Corrected engine comparison (step 4b)
 
 Replay fills from real trades, causally standardised OFI, walk-forward Hawkes. Deterministic runs; 95% CIs are
-Newey–West (lag 300 s) on per-second PnL increment differences. Source: `output/step4b_fixed/step4b_report.txt`.
+Newey–West (lag 300 s) on per-second PnL increment differences. Source: `output/step4b_fixed/step4b_paired.csv`.
 
 | Configuration | Hawkes $ | Baseline $ | Hawkes − baseline (95% CI) | OFI rules on − off, Hawkes / baseline |
 |---|---:|---:|---:|---:|
@@ -358,7 +352,7 @@ Newey–West (lag 300 s) on per-second PnL increment differences. Source: `outpu
 ### Does the Hawkes signal predict anything? (out-of-sample, no fill simulator)
 
 The step 3/4 result above says nothing about whether the Hawkes signal is informative — only that it triggers a
-money-losing quoting rule less often. [`docs/alpha_signal.md`](docs/alpha_signal.md) tests this directly: a
+money-losing quoting rule less often. Step 5 tests this directly: a
 walk-forward (5-fold, chronological) ridge regression predicts 1/5/10-second-ahead returns and next-second order
 flow from the feature table, with and without the Hawkes features.
 
@@ -371,7 +365,7 @@ slightly *worse* (DM p = 0.019, not Bonferroni-significant). Event-time features
 return forecasts: nine extra regressors overfit on one day.
 
 **BTCUSDT (seven days): the Hawkes ensemble is the best model.** Cross-day (fit on d−1, test on d, six test days;
-`docs/hawkes_ensemble.md`):
+`output/step7_hawkes_ensemble/cross_day_summary.csv`):
 
 | Model | Return tests better (of 18) | Flow, days better | p across days (1 s / 5 s / 10 s / flow) | Hit gain, 5 s return | R², 1 s |
 |---|---:|---:|---|---:|---:|
@@ -398,7 +392,7 @@ Method details that change the answer, all covered in the reports:
   configurations quote ~16 ticks from mid and get thousands of times more fills there than the data support (≈7,000×, extrapolated past the 10-tick data range). Their ~$5–11k/day is
   an artefact of the fill model. At the calibrated point the parametric model makes ~$200–260/day; with fills
   replayed from real trades (step 4b) the same strategy loses ~$930/day.
-- Hawkes ([report](docs/hawkes_calibration.md)): clustering is overwhelming against a Poisson null, and
+- Hawkes (`output/hawkes_diagnostics/`): clustering is overwhelming against a Poisson null, and
   cross-excitation earns its keep. But 34% of 1 s buy buckets hold ≥3 trades, sub-window branching ratios (0.24–0.75) sit
   well below the full-day 0.83, and the exact event-time fit is dominated by millisecond-scale excitation the 1 s model
   cannot see. KS rejects every kernel tried.
@@ -435,7 +429,7 @@ horizon, `04` PnL decomposition, `05_*` regime comparisons, `06` latency CDF, `0
 - **1-second decisions.** The engine quotes once per second; the event-time features look at milliseconds, the
   quoting does not.
 - **Time-of-day baselines are fitted on the day they describe.** A multi-day profile needs more days per instrument.
-- **Labels.** The committed AAPL step 2 outputs were regenerated without the raw data (see `docs/changes.md` §2).
+- **Labels.** The committed AAPL step 2 outputs were regenerated without the raw data.
 - Hawkes is a useful **descriptive** model of order-flow clustering and, on BTCUSDT, a modestly useful feature. Nothing
   here shows a profitable strategy: with real-trade fills the AAPL market maker loses money.
 
@@ -444,6 +438,6 @@ horizon, `04` PnL decomposition, `05_*` regime comparisons, `06` latency CDF, `0
 - More days per instrument, then the single holdout evaluation (`config/holdout.json`).
 - Event-time Hawkes features inside the quoting engine, and an event-driven (sub-second) engine to use them.
 - A queue-aware simulator on MBO data, to replace the conservative replay.
-- An HJB + Hawkes controller (docs/plan.md Phase 6a) only after the above. The gating question, whether Hawkes features
+- An HJB + Hawkes controller only after the above. The gating question, whether Hawkes features
   forecast out of sample, now has a qualified yes on BTCUSDT and a no on AAPL. A recent paper attempting exactly this
-  (arXiv:2510.26438) found no closed form and its numerical solver did not converge (see `docs/alpha_signal.md`).
+  (arXiv:2510.26438) found no closed form and its numerical solver did not converge.

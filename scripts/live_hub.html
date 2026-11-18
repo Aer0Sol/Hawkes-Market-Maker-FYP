@@ -233,7 +233,7 @@ tbody tr:hover { background: var(--blue-soft); }
   function renderTable() {
     $("vtable").innerHTML = pairs.map(p => {
       const v = p.validation;
-      if (!v) return `<tr data-key="${p.symbol}"><td>${esc(p.symbol)}</td><td colspan="7" style="text-align:left;color:var(--muted)">${p.symbol === "BTCUSDT" ? "see docs/hawkes_ensemble.md (2024 days): 24/24 tests" : "not trained"}</td></tr>`;
+      if (!v) return `<tr data-key="${p.symbol}"><td>${esc(p.symbol)}</td><td colspan="7" style="text-align:left;color:var(--muted)">${p.symbol === "BTCUSDT" ? "steps 6–7 (2024 days): 24/24 tests" : "not trained"}</td></tr>`;
       const e = v.ensemble["future_ret_1s"], ok = v.ensemble_beats_baseline_1s;
       return `<tr data-key="${p.symbol}"><td>${esc(p.symbol)}</td><td>${v.tick_bp.toFixed(2)} bp</td><td>${e.days_better}/${e.n_days}</td><td>${e.p.toExponential(1)}</td>` +
         `<td class="${cls(e.hit_gain_pp)}">${e.hit_gain_pp >= 0 ? "+" : "−"}${Math.abs(e.hit_gain_pp).toFixed(2)} pp</td><td>${(100 * e.r2).toFixed(2)}%</td>` +

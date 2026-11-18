@@ -140,30 +140,6 @@ def parametric_robustness(scratch: Path) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
-def write_report(runs: pd.DataFrame, paired: pd.DataFrame, param: pd.DataFrame):
-    L = ["STEP 4b: Hawkes vs baseline with the step 4 confounds removed", "",
-         "Data: AAPL 2024-06-03 (23,400 rows). Features: output/step2b_causal (walk-forward one-step-ahead",
-         "Hawkes; first 30 min have no Hawkes fit, so both modes use the EWMA there). OFI standardised causally",
-         "to sd 0.20 in both modes. Fills: replay of the next second's real trades, FIFO at the touch, no RNG.",
-         f"Uncertainty: Newey-West (lag {HAC_LAG} s) on per-second PnL increment differences.", "",
-         "Replay runs:"]
-    L.append(runs.to_string(index=False, float_format=lambda v: f"{v:,.3f}"))
-    L += ["", "Paired differences (final PnL, $):"]
-    for _, r in paired.iterrows():
-        flag = "excludes 0" if r["excludes_zero"] else "includes 0"
-        L.append(f"  [{r['config']}] {r['comparison']:32s} {r['diff']:9.2f}  95% CI [{r['ci95_lo']:9.2f}, "
-                 f"{r['ci95_hi']:9.2f}]  ({flag})")
-    L += ["", "Robustness: parametric fills with the same EWMA pressure in both modes (10 seeds, t-interval):"]
-    for _, r in param.iterrows():
-        L.append(f"  [{r['config']}] signal {r['signal']:3s} hawkes - baseline {r['mean_diff']:9.2f}  "
-                 f"95% CI [{r['ci95_lo']:9.2f}, {r['ci95_hi']:9.2f}]")
-    L += ["", "Caveats: one day; queue ahead of us is never reduced by cancellations (fills are late, i.e.",
-          "conservative); our quote is assumed live for the whole next second (no latency); behind the touch",
-          "only trades printed through our price fill us; MTM at mid with no liquidation cost."]
-    (OUT / "step4b_report.txt").write_text("\n".join(L) + "\n")
-    print("\n".join(L))
-
-
 def main():
     for p in (BIN, FEATURES, TRADES):
         if not p.exists():
@@ -179,7 +155,6 @@ def main():
     runs.to_csv(OUT / "step4b_replay_runs.csv", index=False)
     paired.to_csv(OUT / "step4b_paired.csv", index=False)
     param.to_csv(OUT / "step4b_parametric_robustness.csv", index=False)
-    write_report(runs, paired, param)
 
 
 if __name__ == "__main__":
