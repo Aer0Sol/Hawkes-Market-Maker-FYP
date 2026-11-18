@@ -1,0 +1,11 @@
+{
+  "ADAUSDT": "with_hawkes",
+  "BNBUSDT": "with_hawkes",
+  "BTCUSDT": "hawkes_ensemble",
+  "DOGEUSDT": "with_hawkes",
+  "ETHUSDT": "hawkes_ensemble",
+  "LINKUSDT": "hawkes_ensemble",
+  "NEARUSDT": "hawkes_ensemble",
+  "SOLUSDT": "with_hawkes",
+  "XRPUSDT": "with_hawkes"
+}

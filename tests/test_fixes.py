@@ -163,3 +163,276 @@ def test_live_engine_matches_offline_features(tmp_path):
     np.testing.assert_allclose(live_df["hawkes_ofi"], off_h["hawkes_ofi"][:k], rtol=1e-9, atol=1e-12)
     np.testing.assert_allclose(live_df["et_ofi_fast"], off["et_ofi_0p1s"][:k], rtol=1e-6, atol=1e-9)
     json.dumps(lm._dumps({"x": float("nan")}))  # NaN-safe serialisation for the browser
+
+
+EXACT = {"mu": [0.3, 0.4], "omega": [300.0, 5.0, 0.1],
+         "alpha": [[[0.20, 0.05], [0.04, 0.18]], [[0.10, 0.02], [0.03, 0.12]], [[0.05, 0.01], [0.01, 0.06]]]}
+
+
+def test_exact_hawkes_intensity_matches_brute_force():
+    import step7_hawkes_ensemble as s7
+    rng = np.random.default_rng(7)
+    t0 = pd.Timestamp("2024-06-03 13:30", tz="UTC")
+    ev_s = np.sort(rng.uniform(0, 15, 250))
+    sign = rng.choice([-1, 1], 250)
+    df = pd.DataFrame({"ts": pd.date_range(t0, periods=15, freq="1s")})
+    out = s7.exact_intensity(df, pd.Series(t0 + pd.to_timedelta(ev_s, unit="s")), sign, EXACT)
+    a, w, mu = np.array(EXACT["alpha"]), np.array(EXACT["omega"]), np.array(EXACT["mu"])
+    for row in (2, 9, 14):
+        end = row + 1.0
+        lam = mu.copy()
+        for t, sg in zip(ev_s, sign):
+            if t < end:
+                j = 0 if sg > 0 else 1
+                lam += (a[:, :, j] * (w * np.exp(-w * (end - t)))[:, None]).sum(axis=0)
+        assert out.loc[row, "hx_log_buy"] == pytest.approx(np.log(lam[0]), rel=1e-7)  # ns timestamp rounding
+        assert out.loc[row, "hx_ofi"] == pytest.approx((lam[0] - lam[1]) / lam.sum(), rel=1e-6, abs=1e-9)
+
+
+def test_live_exact_hawkes_matches_offline():
+    pytest.importorskip("websockets")
+    import live_monitor as lm
+    import step7_hawkes_ensemble as s7
+
+    rng = np.random.default_rng(8)
+    n = 2000
+    t_ms = np.sort(rng.integers(1_717_372_800_000, 1_717_372_800_000 + 120_000, n))
+    sign = rng.choice([-1, 1], n)
+    ts = pd.Series(pd.to_datetime(t_ms, unit="ms", utc=True))
+    grid = pd.DataFrame({"ts": pd.date_range(ts.iloc[0].floor("1s"), ts.iloc[-1].floor("1s"), freq="1s")})
+    off = s7.exact_intensity(grid, ts, sign, EXACT)
+    feats = ["order_flow_imbalance"]
+    model = {"hawkes_params": {"mu_buy": 0.2, "mu_sell": 0.2, "alpha_bb": 0.1, "alpha_bs": 0.0, "alpha_ss": 0.1,
+                               "alpha_sb": 0.0, "beta": 0.8},
+             "ewma_span": 60, "event_half_lives_s": [0.1], "exact_hawkes": EXACT,
+             "models": {"baseline_ewma": {"features": feats, "mu": [0.0], "sigma": [1.0], "beta": [0.0], "intercept": 0.0}}}
+    eng = lm.Engine(model)
+    live = []
+    for t, sg in zip(t_ms, sign):
+        while eng.bucket_ms is not None and t >= eng.bucket_ms + 1000:
+            live.append(eng.close_bucket())
+        eng.on_trade(int(t), 67000.0, 0.01, sg < 0)
+    live.append(eng.close_bucket())
+    k = min(len(live), len(off))
+    np.testing.assert_allclose(pd.DataFrame(live[:k])["hx_ofi"], off["hx_ofi"][:k], rtol=1e-6, atol=1e-9)
+
+
+def _maker(**kw):
+    pytest.importorskip("websockets")
+    import live_monitor as lm
+    m = lm.PaperMaker(["with_hawkes"], notional=6500.0, maker_fee_bps=10.0, **kw)
+    m.on_book(65000.00, 2.0, 65000.01, 3.0)   # 2 BTC ahead on the bid, 3 BTC on the ask
+    m.requote(0, None, float("nan"))           # touch book: 0.1 BTC each side
+    return m
+
+
+def test_maker_fifo_queue_and_through_fill():
+    m = _maker()
+    b = m.books["touch"]
+    m.on_trade(10, 65000.00, 1.5, True)        # sell at our bid: queue 2.0 -> 0.5, no fill
+    assert b.inv == 0 and b.bid.queue_ahead == pytest.approx(0.5)
+    m.on_trade(20, 65000.00, 0.55, True)       # 0.5 finishes the queue, 0.05 fills us
+    assert b.inv == pytest.approx(0.05)
+    m.on_trade(30, 64999.99, 0.01, True)       # printed through our bid: rest of our order fills
+    assert b.inv == pytest.approx(0.1) and not b.bid.live
+    assert b.cash == pytest.approx(-0.1 * 65000.00)
+    assert b.fees == pytest.approx(0.1 * 65000.00 * 10 / 1e4)
+    m.requote(1100, None, float("nan"))        # 1 s markout resolves at the current mid
+    assert b.markout_1s == pytest.approx(0.1 * (65000.005 - 65000.00))
+
+
+def test_maker_queue_bounded_by_displayed_size_and_kept_on_requote():
+    m = _maker()
+    b = m.books["touch"]
+    m.on_book(65000.00, 0.3, 65000.01, 3.0)    # displayed bid size fell (cancels ahead): queue <= 0.3
+    assert b.bid.queue_ahead == pytest.approx(0.3)
+    m.requote(1000, None, float("nan"))        # same price: keep our place
+    assert b.bid.queue_ahead == pytest.approx(0.3)
+    m.on_book(65000.01, 1.0, 65000.02, 1.0)    # touch moved: re-quote joins the back of the new level
+    m.requote(2000, None, float("nan"))
+    assert b.bid.price == 65000.01 and b.bid.queue_ahead == pytest.approx(1.0)
+
+
+def test_maker_avellaneda_stoikov_quotes():
+    import math
+    m = _maker(k=0.26, gamma=0.01, tau_s=10.0)
+    sigma = 4.5
+    m.requote(1000, None, sigma)
+    half = (1 / 0.01) * math.log(1 + 0.01 / 0.26) + 0.5 * 0.01 * sigma ** 2 * 10
+    q = m.books["as_none"].last_quote
+    assert q[0] == pytest.approx(math.floor((65000.005 - half) / 0.01) * 0.01)
+    assert q[1] == pytest.approx(math.ceil((65000.005 + half) / 0.01) * 0.01)
+    assert m.books["as_none"].bid.queue_ahead == math.inf   # behind the touch: through-trades only
+
+
+def test_maker_signal_pull_and_inventory_cap():
+    m = _maker(inventory_limit=6000.0)
+    for i in range(80):                        # history for the causal standardisation
+        m.requote(1000 * (i + 1), {"with_hawkes": 1e-6 * (-1) ** i}, 4.5)
+    m.requote(100_000, {"with_hawkes": 5e-5}, 4.5)   # strong predicted rise: pull the ask
+    hb = m.books["as_with_hawkes"]
+    assert hb.ask.live is False and hb.bid.live is True and hb.pulls >= 1
+    assert m.books["as_none"].ask.live is True
+    tb = m.books["touch"]
+    tb.inv = 0.1                               # $6,500 long > $6,000 cap: stop bidding
+    m.requote(101_000, None, 4.5)
+    assert tb.bid.live is False and tb.ask.live is True
+
+
+class _Flow:
+    """Stand-in for Engine.exact_lambda: settable (buy, sell) intensities."""
+    def __init__(self):
+        self.lam = (1.0, 1.0)
+
+    def __call__(self, t_ms):
+        return self.lam
+
+
+def _ev_maker(latency_ms=50.0):
+    pytest.importorskip("websockets")
+    import live_monitor as lm
+    flow = _Flow()
+    m = lm.PaperMaker(["hawkes_ensemble"], notional=6500.0, k=0.26, gamma=0.01, tau_s=10.0,
+                      flow_fn=flow, ev_signal="hawkes_ensemble", latency_ms=latency_ms)
+    m.on_book(65000.00, 2.0, 65000.01, 3.0, t_ms=0)
+    m.requote(1000, None, 0.5)                   # sets sigma; schedules the event-driven quotes for t = 1050
+    return m, flow
+
+
+def test_event_driven_quotes_take_effect_only_after_latency():
+    m, _ = _ev_maker()
+    ev = m.books["ev_none"]
+    assert not ev.bid.live                       # decided at 1000, not yet at the market
+    m.on_trade(1049, 65000.02, 0.01, False)      # before 1050: nothing to fill
+    assert not ev.bid.live and ev.fills == 0
+    m.on_trade(1051, 65000.02, 0.01, False)      # the pending quote is applied first
+    assert ev.bid.live and ev.ask.live
+    assert ev.last_quote == m.books["as_none"].last_quote   # same A-S prices, only the timing differs
+
+
+def test_event_driven_reprices_on_book_change_with_latency():
+    m, _ = _ev_maker()
+    m.apply_pending(1050)
+    ev = m.books["ev_none"]
+    old = ev.bid.price
+    m.on_book(65000.50, 1.0, 65000.51, 1.0, t_ms=1200)   # touch moves up 50 cents
+    assert ev.bid.price == old                    # still the stale quote for 50 ms
+    m.on_book(65000.50, 1.0, 65000.51, 1.0, t_ms=1250)
+    assert ev.bid.price > old
+
+
+def test_event_driven_hawkes_pulls_threatened_side_and_post_only():
+    m, flow = _ev_maker(latency_ms=10.0)
+    for i in range(m.BURST_WARMUP + m.BURST_REFRESH):   # history of the log intensity ratio
+        flow.lam = (1.0 + 0.05 * (-1) ** i, 1.0)
+        m.on_flow(2000 + i)
+    m.apply_pending(10_000)
+    hb, nb = m.books["ev_hawkes"], m.books["ev_none"]
+    assert hb.ask.live and hb.bid.live
+    flow.lam = (50.0, 1.0)                       # buy self-excitation burst
+    m.on_flow(20_000)
+    m.apply_pending(20_010)
+    assert not hb.ask.live and hb.bid.live and hb.burst_pulls >= 1
+    assert nb.ask.live                           # the no-Hawkes control keeps quoting
+    m.ev_pending.append((20_020, "ev_none", 65000.02, None))  # a bid that would cross the 65000.01 ask
+    m.apply_pending(20_020)
+    assert not nb.bid.live                       # post-only: rejected rather than executed
+
+
+def _fast_exec():
+    pytest.importorskip("websockets")
+    import live_monitor as lm
+    z = {"v": 0}
+    ex = lm.Executor(["hawkes_ensemble"], notional=6500.0, every_s=60, window_s=10,
+                     burst_fn=lambda t: z["v"], latency_ms=50.0, fast_exec=True)
+    ex.on_book(65000.00, 2.0, 65000.01, 3.0, t_ms=0)
+    ex.on_second(1000, {"hawkes_ensemble": -1e-5})   # buy order; forecast favourable: timing waits, passive rests
+    return ex, z
+
+
+def test_repeg_passive_follows_touch_after_latency_and_default_books_do_not():
+    ex, _ = _fast_exec()
+    p = ex.books["repeg_passive_none"].parent
+    assert p.order.price == 65000.00
+    ex.on_book(65000.05, 1.0, 65000.06, 1.0, t_ms=1100)   # bid moves up
+    assert p.order.price == 65000.00                       # still in flight
+    ex.on_book(65000.05, 1.0, 65000.06, 1.0, t_ms=1150)
+    assert p.order.price == 65000.05 and p.order.queue_ahead == 1.0
+    assert ex.books["passive_none"].parent.order.price == 65000.00   # the slow control never moves
+    assert ex.books["passive_hawkes_ensemble"].parent.order.price == 65000.00   # fast Hawkes books do not re-peg
+
+
+def test_fast_hawkes_crosses_on_adverse_burst_with_latency():
+    ex, z = _fast_exec()
+    fb, ft = ex.books["passive_hawkes_ensemble"], ex.books["timing_hawkes_ensemble"]   # fast by default
+    z["v"] = -1                                    # sell burst: favourable for a buy, keep waiting
+    ex.on_flow(1200)
+    assert not ex.pending
+    z["v"] = 1                                     # buy burst against our buy
+    ex.on_flow(1300)
+    assert fb.parent.cross_sent and ft.parent.cross_sent and fb.fast_crosses == 1
+    ex.on_book(65000.00, 2.0, 65000.01, 3.0, t_ms=1340)
+    assert fb.parent.remaining > 0                 # not yet at the market
+    ex.on_book(65000.02, 2.0, 65000.03, 3.0, t_ms=1350)   # arrives 50 ms later: pays the ask at that time
+    assert fb.parent.remaining == 0 and fb.parent.price_cost > 0
+    assert ex.books["slow_passive_hawkes"].parent.remaining > 0   # the per-second book is still resting
+    assert ex.books["slow_timing_hawkes"].parent.remaining > 0
+
+
+def test_python_replay_rule_matches_cpp_engine(engine_bin, tmp_path):
+    import reconcile_live_maker as rl
+    trades = [(1, 100.00, 80, -1), (2, 100.00, 30, -1), (3, 99.99, 5, -1), (4, 100.01, 7, 1), (5, 100.02, 1, 1)]
+    r = run_replay(engine_bin, tmp_path, trades)           # engine quotes 100.00 / 100.01 at the touch, 25 shares
+    by_row = {i: np.array([[p, sz, sg]], dtype=float) for i, p, sz, sg in trades}
+    bid_o, ask_o = rl.Resting(), rl.Resting()
+    py_bid, py_ask = [], []
+    for i in range(len(r)):
+        nxt = by_row.get(i + 1)
+        py_bid.append(rl.replay_fill(bid_o, True, 100.00, 100.00, 100.0, True, 25, 0.01, nxt))
+        py_ask.append(rl.replay_fill(ask_o, True, 100.01, 100.01, 100.0, False, 25, 0.01, nxt))
+    np.testing.assert_allclose(py_bid, r.bid_fill_qty.to_numpy())
+    np.testing.assert_allclose(py_ask, r.ask_fill_qty.to_numpy())
+
+
+def _executor():
+    pytest.importorskip("websockets")
+    import live_monitor as lm
+    ex = lm.Executor(["hawkes_ensemble"], notional=6500.0, every_s=60, window_s=10)
+    ex.on_book(65000.00, 2.0, 65000.10, 2.0)   # 10-cent spread to make savings visible
+    return ex
+
+
+def test_executor_passive_fill_saves_the_spread():
+    ex = _executor()
+    ex.on_second(1_000, {"hawkes_ensemble": -1e-5})   # launch a buy; forecast says the price will fall: wait
+    b = ex.books["passive_hawkes_ensemble"]
+    assert b.parent is not None and b.parent.order.price == 65000.00
+    ex.on_trade(64999.90, 0.01, True)                 # sell printed through our bid: maker fill in full
+    ex.on_second(2_000, {"hawkes_ensemble": -1e-5})
+    assert b.orders == 1 and b.parent is None
+    size = 6500.0 / 65000.05
+    assert b.price_saved == pytest.approx(0.10 * size)  # bought at the bid instead of the ask
+    assert b.fee_diff == pytest.approx(65000.00 * size * 10 / 1e4 - 65000.10 * size * 10 / 1e4)
+
+
+def test_executor_timing_waits_then_crosses_on_adverse_forecast():
+    ex = _executor()
+    ex.on_second(1_000, {"hawkes_ensemble": -1e-5})    # buy; price expected to fall: wait
+    t = ex.books["timing_hawkes_ensemble"]
+    assert t.parent is not None and t.orders == 0
+    ex.on_book(64999.90, 2.0, 65000.00, 2.0)           # price fell 10 cents
+    ex.on_second(2_000, {"hawkes_ensemble": +1e-5})     # now expected to rise: buy at the ask
+    assert t.orders == 1
+    size = 6500.0 / 65000.05
+    assert t.price_saved == pytest.approx((65000.10 - 65000.00) * size)
+
+
+def test_executor_control_crosses_at_deadline():
+    ex = _executor()
+    ex.on_second(1_000, None)
+    c = ex.books["passive_none"]
+    for s in range(2, 11):
+        ex.on_second(s * 1000, None)
+    assert c.parent is not None                      # 10 s window not over before 11 s
+    ex.on_second(11_000, None)
+    assert c.orders == 1 and c.parent is None and c.maker_qty == 0

@@ -1,0 +1,5 @@
+{
+  "every_s": 60,
+  "window_s": 10,
+  "notional": 10000.0
+}

@@ -1,7 +1,7 @@
 # Hawkes Market Maker — reproducible pipeline.
 #
 #   make all          engine + diagnostics + analysis (+ features/hawkes when raw data is present)
-#   make features     step 1 (needs data/databento/*.csv, see data/README.md)
+#   make features     step 1 (needs data/databento/*.csv, see docs/data.md)
 #   make hawkes       step 2 (needs raw trades)
 #   make build        compile bin/step3_mm
 #   make engine       run the engine once on the default config
@@ -14,6 +14,13 @@
 #   make live         live BTCUSDT monitor + dashboard on http://127.0.0.1:8765 (needs `validate-binance` once)
 #   make live-replay  the same dashboard replaying a historical day (no network needed)
 #   make taker        paper P&L of trading the 1 s forecasts on 6 out-of-sample BTCUSDT days (option 1)
+#   make ensemble     step 7: the Hawkes ensemble vs every single-family model (BTCUSDT cross-day + AAPL)
+#   make maker-calibration  fit the paper market maker's A-S fill decay k on BTCUSDT
+#   make execution    step 8: does the order-flow forecast make a forced trade cheaper? (6 BTCUSDT test days)
+#   make reconcile DATE=YYYY-MM-DD  live paper maker fills vs the engine's per-second replay of that session
+#   make train-pairs  download a week of 8 more Binance pairs and train + cross-day-validate their models
+#   make validate-strategies  replay every test day through the live code: docs/strategy_validation.md
+#   make hub          start every pair's live monitor (never the original BTCUSDT one) and the hub on :8800
 #   make test         lint + pytest
 #   make bench        engine throughput/latency benchmark
 
@@ -33,17 +40,17 @@ SRC := engine/event_driven_mm_engine.cpp
 
 HAVE_RAW := $(and $(wildcard $(RAW_MBP)),$(wildcard $(RAW_TRD)))
 
-.PHONY: all features hawkes build engine diagnostics analysis causal fixed alpha download-binance validate-binance live live-replay taker plots test lint pytest bench clean check-raw
+.PHONY: all features hawkes build engine diagnostics analysis causal fixed alpha download-binance validate-binance live live-replay taker ensemble maker-calibration reconcile execution train-pairs validate-strategies hub hub-stop plots test lint pytest bench clean check-raw
 
 ifeq ($(HAVE_RAW),)
 all: engine diagnostics analysis fixed alpha
-	@echo "NOTE: raw Databento data not found; steps 1-2 used the committed outputs in output/. See data/README.md."
+	@echo "NOTE: raw Databento data not found; steps 1-2 used the committed outputs in output/. See docs/data.md."
 else
 all: features hawkes engine diagnostics analysis fixed alpha
 endif
 
 check-raw:
-	@test -n "$(HAVE_RAW)" || { echo "Raw data missing: $(RAW_MBP), $(RAW_TRD). See data/README.md."; exit 1; }
+	@test -n "$(HAVE_RAW)" || { echo "Raw data missing: $(RAW_MBP), $(RAW_TRD). See docs/data.md."; exit 1; }
 
 features: check-raw
 	$(PY) scripts/step1_build_feature_table.py --mbp $(RAW_MBP) --trades $(RAW_TRD) --outdir $(STEP1_OUT)
@@ -89,6 +96,38 @@ validate-binance: download-binance
 live:
 	uv run --frozen --group live python scripts/live_monitor.py
 
+PAIRS      ?= ETHUSDT SOLUSDT BNBUSDT XRPUSDT DOGEUSDT ADAUSDT LINKUSDT NEARUSDT
+PAIR_DATES ?= 2026-11-10 2026-11-11 2026-11-12 2026-11-13 2026-11-14 2026-11-15 2026-11-16
+
+train-pairs:
+	for s in $(PAIRS); do for d in $(PAIR_DATES); do $(PY) scripts/download_binance.py --symbol $$s --date $$d; done; done
+	printf "%s\n" $(PAIRS) | xargs -P 4 -I{} $(PY) scripts/train_pair.py --symbol {} --dates $(PAIR_DATES)
+
+validate-strategies:
+	uv run --frozen --group live python scripts/validate_live_strategies.py --symbol BTCUSDT --dates $(BINANCE_DATES)
+	printf "%s\\n" $(PAIRS) | xargs -P 4 -I{} uv run --frozen --group live python scripts/validate_live_strategies.py --symbol {} --dates $(PAIR_DATES)
+	$(PY) scripts/report_validation.py
+
+hub:
+	uv run --frozen --group live python scripts/live_hub.py start
+	uv run --frozen --group live python scripts/live_hub.py serve
+
+hub-stop:
+	uv run --frozen --group live python scripts/live_hub.py stop
+
+execution: download-binance
+	$(PY) scripts/step8_execution.py
+
+maker-calibration: download-binance
+	$(PY) scripts/calibrate_btc_maker.py
+
+DATE ?= $(shell date -u +%Y-%m-%d)
+reconcile:
+	$(PY) scripts/reconcile_live_maker.py --date $(DATE)
+
+ensemble: download-binance
+	$(PY) scripts/step7_hawkes_ensemble.py
+
 taker: download-binance
 	$(PY) scripts/taker_backtest.py
 
@@ -100,10 +139,7 @@ plots:
 	$(PY) scripts/plot_graphs.py
 
 lint:
-	uv run --frozen ruff check tests scripts/hawkes_diagnostics.py scripts/calibrate_fill_model.py scripts/step4_analysis.py \
-		scripts/step5_alpha_signal.py scripts/step6_binance_validation.py scripts/download_binance.py \
-		scripts/step2b_causal_features.py scripts/step4b_fixed_comparison.py scripts/live_monitor.py \
-		scripts/taker_backtest.py
+	uv run --frozen ruff check scripts tests
 
 pytest: build
 	uv run --frozen pytest -q

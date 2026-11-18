@@ -13,11 +13,9 @@ PLOTS_DIR = ROOT / "plots"
 PLOTS_DIR.mkdir(parents=True, exist_ok=True)
 
 MASTER_SUMMARY = STEP4_DIR / "step4_master_summary.csv"
-HAWKES_BASELINE_SUMMARY = STEP4_DIR / "step4_hawkes_vs_baseline_summary.csv"
 REGIME_AGG = STEP4_DIR / "step4_regime_aggregate.csv"
 
 master = pd.read_csv(MASTER_SUMMARY)
-hb_summary = pd.read_csv(HAWKES_BASELINE_SUMMARY)
 regime_agg = pd.read_csv(REGIME_AGG)
 
 master["use_hawkes"] = master["use_hawkes"].astype(bool)

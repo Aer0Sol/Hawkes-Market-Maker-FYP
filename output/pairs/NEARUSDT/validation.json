@@ -1,0 +1,64 @@
+{
+  "symbol": "NEARUSDT",
+  "dates": [
+    "2026-11-10",
+    "2026-11-11",
+    "2026-11-12",
+    "2026-11-13",
+    "2026-11-14",
+    "2026-11-15",
+    "2026-11-16"
+  ],
+  "n_test_days": 6,
+  "tick": 0.001,
+  "tick_bp": 3.1535793125197102,
+  "median_price": 3.171,
+  "ensemble": {
+    "future_ret_1s": {
+      "days_better": 6,
+      "n_days": 6,
+      "p": 0.06198200194812247,
+      "hit_gain_pp": 0.43775746653891656,
+      "r2": 0.002624123105470407
+    },
+    "future_ret_5s": {
+      "days_better": 6,
+      "n_days": 6,
+      "p": 0.18676108856218668,
+      "hit_gain_pp": 1.4314078692038212,
+      "r2": 0.001986850771736437
+    },
+    "future_ret_10s": {
+      "days_better": 5,
+      "n_days": 6,
+      "p": 0.305986710396012,
+      "hit_gain_pp": 0.7157107403545305,
+      "r2": 0.0005679790333155873
+    },
+    "future_ofi_1s": {
+      "days_better": 6,
+      "n_days": 6,
+      "p": 0.010019328158337192,
+      "hit_gain_pp": 0.20231222601564403,
+      "r2": 0.004229050709550282
+    }
+  },
+  "tests_won": 3,
+  "tests": 16,
+  "ensemble_tests_won": 3,
+  "ensemble_tests": 4,
+  "ensemble_beats_baseline_1s": false,
+  "taker_gross_per_day_usd": {
+    "baseline_ewma": 5483.789870222249,
+    "event_time": 7830.709178991071,
+    "exact_hawkes": 6674.166496496939,
+    "hawkes_ensemble": 8165.05254128031,
+    "with_hawkes": 6054.8844712882055
+  },
+  "exact_half_lives_s": [
+    0.0002958984972633729,
+    0.006796924502501208,
+    22.130215183118718
+  ],
+  "minutes": 5.5
+}

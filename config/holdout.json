@@ -1,7 +1,7 @@
 {
   "declared_on": "2026-11-17",
   "declared_at_commit": "be60fe61895b2276decf65d8244b751703d7d303 (plus uncommitted step 2b/4b/5/6 work on branch repo-improvements)",
-  "rule": "These dates are never downloaded, inspected or evaluated before the final frozen evaluation (plan.md CP3). Evaluate them exactly once, with the configuration frozen below, and report the result as is. scripts/download_binance.py and scripts/step6_binance_validation.py refuse them unless --allow-holdout is passed.",
+  "rule": "These dates are never downloaded, inspected or evaluated before the final frozen evaluation (docs/plan.md CP3). Evaluate them exactly once, with the configuration frozen below, and report the result as is. scripts/download_binance.py and scripts/step6_binance_validation.py refuse them unless --allow-holdout is passed.",
   "binance": {
     "BTCUSDT": ["2024-07-01", "2024-07-02", "2024-07-03", "2024-07-04", "2024-07-05", "2024-07-06", "2024-07-07"]
   },

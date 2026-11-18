@@ -1,0 +1,19 @@
+{
+  "calibrated_on": "2024-06-09",
+  "k_per_dollar": 0.2625780088780566,
+  "Lambda0_per_s": 0.02954602494068776,
+  "by_side": {
+    "ask": {
+      "Lambda0": 0.03132902690512721,
+      "k": 0.2742251835833384
+    },
+    "bid": {
+      "Lambda0": 0.027763022976248313,
+      "k": 0.25093083417277484
+    }
+  },
+  "p_touch_at_1_cent": 0.3563525040799083,
+  "gamma_per_dollar": 0.01,
+  "tau_s": 10.0,
+  "note": "Two regimes: ~38% of seconds reach 1 cent from the price (the bid-ask bounce), ~2% reach 25 cents; k describes the tail beyond the first few cents."
+}

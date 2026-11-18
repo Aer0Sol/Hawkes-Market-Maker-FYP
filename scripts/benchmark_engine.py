@@ -237,7 +237,8 @@ def main():
     md.append(f"- Worst observed engine max latency: {safe_summary['engine_max_us_max']:.6f} us")
     md.append(f"- Total latency budget exceedances: {int(safe_summary['latency_budget_exceeded_total'])}")
 
-    (BENCH_DIR / "benchmark_report.md").write_text("\n".join(md))
+    (ROOT / "docs").mkdir(exist_ok=True)
+    (ROOT / "docs" / "benchmark_report.md").write_text("\n".join(md))
 
     print("\nBenchmark complete.")
     print(json.dumps(safe_summary, indent=2))

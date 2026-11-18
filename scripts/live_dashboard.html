@@ -5,29 +5,49 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Hawkes Flow Monitor</title>
 <style>
-/* Layout: an operator's monitor, flat. Deep-blue app bar, four headline readouts, charts on the left and the live scoreboard on the right; one column on narrow screens. Solid colours only, light mode only, by design. */
+/* Layout: an operator's monitor, flat. App bar, four headline readouts, the strategy scoreboard, then one card per strategy family and the charts; one column on narrow screens. Solid colours only, dark olive palette; candles keep fixed colours. */
 :root {
-  --bg: #f6f5ef;          /* off-white ground */
-  --panel: #ffffff;
-  --ink: #0f1d3a;
-  --muted: #5b6478;
-  --rule: #e2e3da;
-  --grid: #eeeee7;
-  --deep: #0b2a6b;        /* deep blue: app bar, headings */
-  --blue: #1f5fe0;        /* blue: primary accent */
-  --blue-soft: #e8eefc;
-  --lime: #9bd31c;        /* lime: marks and fills (not text) */
-  --lime-ink: #4a7a0a;    /* lime dark enough for text */
-  --lime-soft: #eef8d8;
-  --buy: #12805a; --sell: #d23c2c;          /* semantic, kept green/red */
-  --hawkes: #1f5fe0; --event: #6fa80f; --ewma: #8b91a0;
-  --ok: #4a7a0a; --ok-soft: #eef8d8;
-  --warn: #8a5a00; --warn-soft: #faf0d6;
-  --bad: #b3261e; --bad-soft: #fbe6e3;
+  /* Dark olive theme from #D9D28B / #B2BD7E / #8E9162 / #6A795D, with semantic colours brightened for a dark ground. */
+  --bg: #1c1f17;          /* deep moss ground */
+  --panel: #23271d;
+  --raised: #2c3224;
+  --bar: #2c3224;         /* app bar, highlighted tiles */
+  --ink: #c9c6a3;
+  --muted: #8f9177;
+  --rule: #383e2e;
+  --grid: #2b3023;
+  --deep: #e6e1b8;        /* headings and figures: straw-tinted light */
+  --on-accent: #1c1f17;   /* text on straw / slate / sage fills */
+  --blue: #7f9fc0;        /* slate: maker chip, table headers */
+  --blue-soft: #2a3140;
+  --magenta: #c58bb8;
+  --cyan: #6fb7c4;
+  --lime: #d9d28b;        /* straw: markers, taker chip, live pill */
+  --lime-ink: #9fc26a;
+  --lime-soft: #2e3622;
+  --sage: #b2bd7e; --olive: #8e9162; --moss: #6a795d;
+  --buy: #9fc26a; --sell: #e07a5f;          /* fern / terracotta */
+  /* One colour per series, the same in every card, chart and the scoreboard. */
+  --ewma: #d9b44a;        /* baseline (non-Hawkes comparison): ochre */
+  --hawkes: #7f9fc0;      /* +Hawkes (1 s): slate blue */
+  --event: #5fb3a2;       /* +Event-time: teal */
+  --ens: #c58bb8;         /* Hawkes ensemble: plum */
+  --touch: #e6e1b8;       /* touch control */
+  --ctl: #7d7f68;         /* no-signal controls: grey-olive */
+  --ev: #6fb7c4; --evh: #e0944c;   /* event-driven makers: cyan (no signal), orange (Hawkes) */
+  --exec: #ff3b30; --exec-soft: #3d2420;   /* the EXECUTION chip: bright red */
+  --ok: #9fc26a; --ok-soft: #2e3622;
+  --warn: #e0b45a; --warn-soft: #3a3220;
+  --bad: #e07a5f; --bad-soft: #3d2823;
+  /* Candles keep their own colours regardless of theme. */
+  --candle-up: #9bd31c; --candle-up-edge: #4a7a0a; --candle-down: #d23c2c;
   --font: "Roboto", "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
   --mono: "Roboto Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-  color-scheme: light;
+  color-scheme: dark;
 }
+
+
+
 * { box-sizing: border-box; }
 html, body { margin: 0; }
 body {
@@ -37,14 +57,14 @@ body {
 .wrap { max-width: 1400px; margin: 0 auto; display: grid; gap: 14px; }
 
 header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 18px;
-  background: var(--deep); color: #ffffff; border-radius: 14px; }
+  background: var(--bar); color: var(--deep); border-radius: 14px; }
 .mark { width: 22px; height: 22px; border-radius: 6px; flex: none; background: var(--lime); }
-h1 { font-size: 19px; font-weight: 600; margin: 0; letter-spacing: -.01em; color: #ffffff; }
-.sym { font-family: var(--mono); color: var(--deep); background: var(--lime); padding: 2px 8px; border-radius: 6px; font-size: 12.5px; font-weight: 500; }
-header .note { color: #c9d4ee; }
+h1 { font-size: 19px; font-weight: 600; margin: 0; letter-spacing: -.01em; color: var(--deep); }
+.sym { font-family: var(--mono); color: var(--on-accent); background: var(--lime); padding: 2px 8px; border-radius: 6px; font-size: 12.5px; font-weight: 500; }
+header .note { color: var(--ink); }
 .pill { font-size: 12px; font-weight: 600; padding: 4px 10px 4px 8px; border-radius: 99px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
 .pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-.pill.ok { color: var(--deep); background: var(--lime); }
+.pill.ok { color: var(--on-accent); background: var(--lime); }
 .pill.ok::before { animation: pulse 1.6s ease-in-out infinite; }
 .pill.warn { color: var(--warn); background: var(--warn-soft); }
 .pill.bad { color: var(--bad); background: var(--bad-soft); }
@@ -53,15 +73,26 @@ header .note { color: #c9d4ee; }
 .spacer { flex: 1; }
 
 .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
-.kpi { background: var(--panel); border: 1px solid var(--rule); border-top: 3px solid var(--blue); border-radius: 12px; padding: 12px 16px; min-width: 0; }
-.kpi .l { font-size: 11px; font-weight: 600; color: var(--blue); text-transform: uppercase; letter-spacing: .08em; }
-.kpi .v { font-family: var(--mono); font-size: 22px; font-weight: 500; color: var(--deep); font-variant-numeric: tabular-nums; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi { background: var(--panel); border: 1px solid var(--rule); border-top: 5px solid var(--blue); border-radius: 14px; padding: 14px 18px; min-width: 0; }
+.kpi:nth-child(2) { border-top-color: var(--lime); }
+.kpi:nth-child(3) { border-top-color: var(--magenta); }
+.kpi:nth-child(4) { border-top-color: var(--lime); }
+#k-ba { font-size: 21px; padding-top: 5px; }
+.kpi:first-child { background: var(--bar); border-color: var(--bar); border-top-color: var(--lime); }
+.kpi:first-child .l { color: var(--lime); }
+.kpi:first-child .v { color: var(--deep); }
+.kpi:first-child .s { color: var(--ink); }
+.kpi .l { font-size: 11px; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: .09em; }
+.kpi .v { font-family: var(--mono); font-size: 28px; font-weight: 600; color: var(--deep); font-variant-numeric: tabular-nums; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -.01em; }
 .kpi .s { font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
-.main { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 14px; align-items: start; }
 .charts { display: grid; gap: 14px; min-width: 0; }
 .card { background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 16px 18px 12px; min-width: 0; }
-.card h2 { font-size: 14px; font-weight: 600; margin: 0 0 4px; color: var(--deep); }
+.card h2 { font-size: 15px; font-weight: 700; margin: 0 0 4px; color: var(--deep); display: flex; align-items: center; gap: 8px; }
+.card h2::before { content: ""; width: 10px; height: 10px; border-radius: 3px; background: var(--lime); flex: none; }
+canvas.xl { height: 330px; }
+.price-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 16px; }
+.legend i.box { width: 10px; height: 10px; border: 1.5px solid; border-radius: 2px; }
 .card .sub { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--muted); margin-bottom: 10px; }
 .legend i { display: inline-block; width: 16px; height: 0; border-top: 2.5px solid; vertical-align: middle; margin-right: 6px; }
@@ -81,13 +112,76 @@ td.m { font-family: var(--mono); font-size: 12.5px; color: var(--deep); }
 .gain .m { font-family: var(--mono); font-weight: 500; }
 .pos { color: var(--lime-ink); } .neg { color: var(--bad); }
 .money { font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+.split { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+.tablewrap { overflow-x: auto; min-width: 0; }
+table.data { min-width: 460px; }
+table.data td, table.data th { padding: 9px 10px; white-space: nowrap; }
+.chartbox { min-width: 0; }
+.stack { display: grid; gap: 18px; }
+.stack canvas.tall { height: 260px; }
+.chart-title { font-size: 12px; font-weight: 600; color: var(--deep); margin-bottom: 4px; }
+.section-label { font-size: 11px; font-weight: 600; color: var(--blue); text-transform: uppercase; letter-spacing: .08em; margin: 6px 2px -4px; }
+@media (max-width: 1100px) { .split, .pair { grid-template-columns: minmax(0, 1fr); } }
+.leader-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; margin-bottom: 4px; }
+.leader-summary { font-size: 13.5px; color: var(--ink); margin: 0 0 12px; background: var(--lime-soft); border-left: 4px solid var(--lime); padding: 8px 12px; border-radius: 0 8px 8px 0; }
+.leader-summary b { color: var(--deep); }
+.leader-wrap { overflow-x: auto; }
+.leader { min-width: 720px; }
+.leader td, .leader th { padding: 8px 10px; }
+.leader th:nth-child(2), .leader td:nth-child(2), .leader th:nth-child(3), .leader td:nth-child(3) { text-align: left; }
+.leader td.rank span { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--grid); color: var(--deep); font-weight: 700; font-size: 12px; }
+.leader tr:nth-child(1) td.rank span { background: var(--lime); color: var(--on-accent); }
+.leader tr:nth-child(2) td.rank span, .leader tr:nth-child(3) td.rank span { background: var(--blue); color: var(--on-accent); }
+.leader td.rank { font-family: var(--mono); color: var(--muted); width: 28px; }
+.leader tr.top td { background: var(--lime-soft); }
+.ens-row td { background: var(--blue-soft); }
+.leader tr.top td.rank { color: var(--lime-ink); font-weight: 600; }
+.kind { display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; padding: 3px 9px; border-radius: 99px; }
+.kind.maker { color: var(--on-accent); background: var(--blue); }
+.kind.taker { color: var(--on-accent); background: var(--lime); }
+.kind.exec { color: #ffffff; background: var(--exec); }
+.chip-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: 12px; color: var(--muted); margin: -4px 0 10px; }
+.bar { position: relative; height: 12px; min-width: 120px; background: var(--grid); border-radius: 6px; }
+.bar span { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+.bar span.neg { right: 50%; background: var(--sell); }
+.bar span.pos { left: 50%; background: var(--buy); }
+.leader tbody tr { cursor: pointer; transition: background-color .25s; }
+.leader tbody tr:hover td { background: var(--blue-soft); }
+.leader tbody tr:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.leader tbody tr.selected td { background: var(--blue-soft); }
+.leader tbody tr.selected td:first-child { box-shadow: inset 3px 0 0 var(--blue); }
+.leader tbody tr.moved-up td { animation: flash-up 1.3s ease-out; }
+.leader tbody tr.moved-down td { animation: flash-down 1.3s ease-out; }
+@keyframes flash-up { 0% { background: var(--ok-soft); } 100% { background: transparent; } }
+@keyframes flash-down { 0% { background: var(--bad-soft); } 100% { background: transparent; } }
+.bar span { transition: width .6s cubic-bezier(.2,.8,.2,1); }
+.detail { display: grid; grid-template-rows: 0fr; opacity: 0; transition: grid-template-rows .4s ease, opacity .3s ease, margin-top .4s ease; margin-top: 0; }
+.detail.open { grid-template-rows: 1fr; opacity: 1; margin-top: 14px; }
+.detail-inner { overflow: hidden; min-height: 0; }
+.detail-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; border-top: 1px solid var(--rule); padding-top: 14px; }
+.detail-title { display: flex; align-items: center; gap: 8px; font-size: 15px; color: var(--deep); }
+.close { font: 600 12px var(--font); color: var(--blue); background: var(--blue-soft); border: 0; border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+.close:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; margin: 12px 0 14px; }
+.stat { background: var(--bg); border: 1px solid var(--rule); border-left: 4px solid var(--blue); border-radius: 10px; padding: 8px 12px; }
+.stat:nth-child(2) { background: var(--bar); border-color: var(--bar); border-left-color: var(--lime); }
+.stat:nth-child(2) .l { color: var(--lime); }
+.stat:nth-child(2) .v { color: var(--deep); }
+.stat .l { font-size: 10.5px; font-weight: 600; color: var(--blue); text-transform: uppercase; letter-spacing: .07em; }
+.stat .v { font-family: var(--mono); font-size: 17px; font-weight: 600; color: var(--deep); margin-top: 2px; white-space: nowrap; }
+.stat .v.pos { color: var(--lime-ink); } .stat .v.neg { color: var(--bad); }
+.stat:nth-child(2) .v.neg { color: var(--bad); } .stat:nth-child(2) .v.pos { color: var(--lime); }
+.detail-charts { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 20px; }
+@media (max-width: 900px) { .detail-charts { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { .detail, .bar span, .leader tbody tr { transition: none; } .leader tbody tr.moved-up td, .leader tbody tr.moved-down td { animation: none; } }
+.bar::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--muted); }
 #pnl-body td:first-child { white-space: nowrap; }
 .about { font-size: 12.5px; color: var(--muted); line-height: 1.6; }
 .about p { margin: 0 0 8px; }
 .about strong { color: var(--deep); }
 .empty { color: var(--muted); font-size: 13px; padding: 30px 0; text-align: center; }
 @media (prefers-reduced-motion: reduce) { .pill.ok::before { animation: none; } }
-@media (max-width: 1000px) { .main { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 640px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } canvas { height: 160px; } .kpi .v { font-size: 19px; } }
 </style>
 </head>
@@ -110,57 +204,134 @@ td.m { font-family: var(--mono); font-size: 12.5px; color: var(--deep); }
     <div class="kpi"><div class="l">Seconds scored</div><div class="v" id="k-n">0</div><div class="s" id="k-n-s">predictions checked against the next second</div></div>
   </section>
 
-  <div class="main">
-    <div class="charts">
-      <div class="card">
-        <h2>Price</h2>
-        <div class="sub">Last trade each second, with the best bid and ask (last 10 minutes)</div>
-        <canvas id="c-price" class="tall" aria-label="Price chart"></canvas>
-      </div>
-      <div class="card">
-        <h2>Order-flow intensity (events per second)</h2>
-        <div class="legend"><span><i style="border-color:var(--buy)"></i>Hawkes buy λ</span><span><i style="border-color:var(--sell)"></i>Hawkes sell λ</span><span><i class="dash" style="border-color:var(--buy)"></i>EWMA buy</span><span><i class="dash" style="border-color:var(--sell)"></i>EWMA sell</span></div>
-        <canvas id="c-int" aria-label="Intensity chart"></canvas>
-      </div>
-      <div class="card">
-        <h2>Order-flow imbalance</h2>
-        <div class="legend"><span><i style="border-color:var(--hawkes)"></i>Hawkes OFI</span><span><i style="border-color:var(--ewma)"></i>EWMA OFI</span><span><i style="border-color:var(--event)"></i>Event-time OFI (0.1 s half-life)</span></div>
-        <canvas id="c-ofi" aria-label="Imbalance chart"></canvas>
+  <section class="card" aria-labelledby="leader-title">
+    <div class="leader-head">
+      <h2 id="leader-title">Who's making money</h2>
+      <span class="note">All market makers and takers; execution: baseline vs the Hawkes model validated best for this pair (★). Paper only, $10,000 per position, since the server started.</span>
+    </div>
+    <p class="leader-summary" id="leader-summary">Waiting for the first scored seconds.</p>
+    <div class="chip-legend"><span class="kind maker">Market maker</span> earns the spread <span class="kind taker">Taker</span> trades each forecast <span class="kind exec">Execution</span> $ saved on a trade the fund must make anyway, vs. trading immediately</div>
+    <div class="leader-wrap">
+      <table class="leader">
+        <thead><tr><th>#</th><th>Strategy</th><th>Type</th><th>Trades</th><th>Before fees</th><th>Fees</th><th>After fees</th><th style="text-align:center">After fees, relative</th></tr></thead>
+        <tbody id="leader-body"></tbody>
+      </table>
+    </div>
+    <div class="detail" id="detail" aria-hidden="true" inert>
+      <div class="detail-inner">
+        <div class="detail-head">
+          <div class="detail-title"><span class="sw" id="d-sw"></span><b id="d-name"></b><span class="kind" id="d-kind"></span></div>
+          <button type="button" class="close" id="d-close">Close</button>
+        </div>
+        <div class="stats" id="d-stats"></div>
+        <div class="detail-charts">
+          <div class="chartbox"><div class="chart-title">P&amp;L: after fees (solid), before fees (dashed)</div><canvas id="c-detail" class="tall" aria-label="Selected strategy profit and loss"></canvas></div>
+          <div class="chartbox"><div class="chart-title" id="d-pos-title">Inventory</div><canvas id="c-detail-pos" class="tall" aria-label="Selected strategy inventory or position"></canvas></div>
+        </div>
       </div>
     </div>
+  </section>
 
-    <aside class="charts">
-      <div class="card">
-        <h2>Live scoreboard</h2>
-        <div class="sub">Each model forecasts the next second's return; the forecast is scored when that second closes. Hit rate counts seconds where the price moved by more than a bid-ask bounce (1.5 ticks).</div>
-        <table>
+  <section class="card">
+    <h2>Paper market maker</h2>
+    <div class="sub" id="mm-sub">Quotes both sides at the live best bid and ask; fills from real trades with first-in-first-out queue tracking. Paper only.</div>
+    <div class="leader-summary" id="mm-zero" hidden></div>
+    <div class="stack">
+      <div class="tablewrap">
+        <table class="data">
+          <thead><tr><th>Book</th><th>Inventory</th><th>Fills</th><th title="Spread captured at fill, bp of volume">Spread (bp)</th><th title="10 s markout, bp of volume (positive = profitable)">Markout 10 s (bp)</th><th title="P&amp;L if the maker fee were zero">At 0 fees</th><th title="Zero-fee P&amp;L per dollar traded, bp">0-fee edge (bp)</th><th title="0-fee edge minus the no-signal A–S book's: positive = the forecast is helping">vs no signal (bp)</th><th>After fees</th></tr></thead>
+          <tbody id="mm-body"><tr><td colspan="9" class="empty">Needs the live order book (not available in replay).</td></tr></tbody>
+        </table>
+      </div>
+      <div class="chartbox">
+        <div class="chart-title">P&amp;L before fees</div>
+        <div class="legend"><span><i style="border-color:var(--touch)"></i>Touch (control)</span><span><i class="dash" style="border-color:var(--ctl)"></i>A–S, no signal</span><span data-maker="as_baseline_ewma"><i style="border-color:var(--ewma)"></i>A–S + baseline</span><span data-maker="as_with_hawkes"><i style="border-color:var(--hawkes)"></i>A–S + Hawkes</span><span data-maker="as_event_time"><i style="border-color:var(--event)"></i>A–S + event-time</span><span data-maker="as_hawkes_ensemble" class="ens-only"><i style="border-color:var(--ens);border-top-width:3px"></i>Hawkes ensemble</span><span data-maker="ev_none" class="ens-only"><i style="border-color:var(--ev)"></i>Event-driven, no signal</span><span data-maker="ev_hawkes" class="ens-only"><i style="border-color:var(--evh);border-top-width:3px"></i>Event-driven + Hawkes</span></div>
+        <canvas id="c-mm" class="tall" aria-label="Market maker profit and loss before fees"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Trade the forecast</h2>
+    <div class="sub" id="pnl-sub">Each model holds a long or short position by the sign of its forecast and trades only when the sign flips. Paper only.</div>
+    <div class="split">
+      <div class="tablewrap">
+        <table class="data">
+          <thead><tr><th>Model</th><th>Position</th><th>Before fees</th><th>Fees</th><th>After fees</th></tr></thead>
+          <tbody id="pnl-body"><tr><td colspan="5" class="empty">Starts with the first scored second.</td></tr></tbody>
+        </table>
+      </div>
+      <div class="chartbox">
+        <div class="chart-title">P&amp;L after fees (solid) and before fees (dashed)</div>
+        <div class="legend"><span data-taker="baseline_ewma"><i style="border-color:var(--ewma)"></i>Baseline</span><span data-taker="with_hawkes"><i style="border-color:var(--hawkes)"></i>+Hawkes</span><span data-taker="event_time"><i style="border-color:var(--event)"></i>+Event-time</span><span data-taker="hawkes_ensemble" class="ens-only"><i style="border-color:var(--ens);border-top-width:3px"></i>Hawkes ensemble</span></div>
+        <canvas id="c-pnl" class="tall" aria-label="Paper profit and loss chart"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Execution: trades the fund must make</h2>
+    <div class="sub" id="ex-sub">A $10,000 order every minute (alternating buy / sell) to complete within 10 seconds. Benchmark: trade immediately as a taker. Paper only.</div>
+    <div class="stack">
+      <div class="tablewrap">
+        <table class="data">
+          <thead><tr><th>Strategy</th><th>Orders</th><th>Saving per order</th><th>Saved, before fees</th><th title="Strategy fees minus the fees of trading immediately. Fees are 10 bp of price × quantity, so fills at better prices pay slightly less: negative = cheaper.">Fee difference</th><th>Saved, after fees</th><th>Maker fills</th></tr></thead>
+          <tbody id="ex-body"><tr><td colspan="7" class="empty">Needs the live order book; the first order goes out at the next minute.</td></tr></tbody>
+        </table>
+      </div>
+      <div class="chartbox">
+        <div class="chart-title">Cumulative $ saved vs. trading immediately</div>
+        <div class="legend"><span><i style="border-color:var(--ctl)"></i>Passive, no signal</span><span data-exec="hawkes_ensemble"><i style="border-color:var(--ens);border-top-width:3px"></i>Hawkes ensemble</span><span data-exec="with_hawkes"><i style="border-color:var(--hawkes)"></i>+Hawkes</span><span data-exec="event_time"><i style="border-color:var(--event)"></i>+Event-time</span><span data-exec="baseline_ewma"><i style="border-color:var(--ewma)"></i>Baseline</span><span><i class="dash" style="border-color:var(--ink)"></i>dashed = timing (taker)</span></div>
+        <canvas id="c-ex" class="tall" aria-label="Cumulative execution savings"></canvas>
+      </div>
+    </div>
+  </section>
+
+  <div class="pair">
+    <section class="card">
+      <h2>Forecast scoreboard</h2>
+      <div class="sub">Each model forecasts the next second's return; the forecast is scored when that second closes. Hit rate counts moves larger than a bid-ask bounce (1.5 ticks).</div>
+      <div class="tablewrap">
+        <table class="data">
           <thead><tr><th>Model</th><th>Hit rate</th><th>95% CI</th><th>R²</th></tr></thead>
           <tbody id="score-body"><tr><td colspan="4" class="empty">Scoring starts after 60 s of warm-up for the volatility feature.</td></tr></tbody>
         </table>
-        <div class="gain" id="gain"></div>
       </div>
-      <div class="card">
-        <h2>Paper P&amp;L: trade the forecast</h2>
-        <div class="sub" id="pnl-sub">Each model holds a long or short position by the sign of its forecast and trades only when the sign flips. Paper only.</div>
-        <table>
-          <thead><tr><th>Model</th><th>Pos</th><th>Gross</th><th>Fees</th><th>Net</th></tr></thead>
-          <tbody id="pnl-body"><tr><td colspan="5" class="empty">Starts with the first scored second.</td></tr></tbody>
-        </table>
-        <div class="legend" style="margin-top:10px"><span><i style="border-color:var(--ewma)"></i>Baseline</span><span><i style="border-color:var(--hawkes)"></i>+Hawkes</span><span><i style="border-color:var(--event)"></i>+Event-time</span><span><i class="dash" style="border-color:var(--muted)"></i>before fees</span></div>
-        <canvas id="c-pnl" aria-label="Paper profit and loss chart"></canvas>
-      </div>
-      <div class="card">
-        <h2>Hit rate over time</h2>
-        <div class="legend"><span><i style="border-color:var(--ewma)"></i>Baseline</span><span><i style="border-color:var(--hawkes)"></i>+Hawkes</span><span><i style="border-color:var(--event)"></i>+Event-time</span></div>
-        <canvas id="c-hit" aria-label="Cumulative hit rate chart"></canvas>
-      </div>
-      <div class="card about">
-        <p><strong>What this is.</strong> The models are the ridge regressions from step 6 of the project, trained offline on one historical BTCUSDT day and applied here unchanged. The Hawkes intensity is the one-step-ahead forecast with the parameters fitted that day.</p>
-        <p><strong>How to read it.</strong> A few minutes of scores is noise; offline, the gain was 1–3 percentage points over whole days. The CI is per model; the gain lines ignore serial correlation, so treat them as indicative.</p>
-        <p id="model-info"></p>
-      </div>
-    </aside>
+      <div class="gain" id="gain"></div>
+    </section>
+    <section class="card">
+      <h2>Hit rate over time</h2>
+      <div class="legend"><span data-model="baseline_ewma"><i style="border-color:var(--ewma)"></i>Baseline</span><span data-model="with_hawkes"><i style="border-color:var(--hawkes)"></i>+Hawkes</span><span data-model="event_time"><i style="border-color:var(--event)"></i>+Event-time</span><span data-model="hawkes_ensemble" class="ens-only"><i style="border-color:var(--ens);border-top-width:3px"></i>Hawkes ensemble</span></div>
+      <canvas id="c-hit" class="tall" aria-label="Cumulative hit rate chart"></canvas>
+    </section>
   </div>
+
+  <div class="section-label">Live market</div>
+  <section class="card">
+    <div class="price-head">
+      <h2>BTCUSDT price</h2>
+      <div class="legend"><span><i class="box" style="background:var(--candle-up);border-color:var(--candle-up-edge)"></i>Up candle</span><span><i class="box" style="background:var(--candle-down);border-color:var(--candle-down)"></i>Down candle</span><span class="note">10-second candles from live trades; bars at the bottom are volume, buy (lime) over sell (red). Last 10 minutes.</span></div>
+    </div>
+    <canvas id="c-price" class="xl" aria-label="Price candlestick chart"></canvas>
+  </section>
+  <div class="pair">
+    <section class="card">
+      <h2>Order-flow intensity (events per second)</h2>
+      <div class="legend"><span><i style="border-color:var(--buy)"></i>Hawkes buy λ</span><span><i style="border-color:var(--sell)"></i>Hawkes sell λ</span><span><i class="dash" style="border-color:var(--buy)"></i>EWMA buy</span><span><i class="dash" style="border-color:var(--sell)"></i>EWMA sell</span></div>
+      <canvas id="c-int" aria-label="Intensity chart"></canvas>
+    </section>
+    <section class="card">
+      <h2>Order-flow imbalance</h2>
+      <div class="legend"><span><i style="border-color:var(--hawkes)"></i>Hawkes OFI</span><span><i style="border-color:var(--ewma)"></i>EWMA OFI</span><span><i style="border-color:var(--event)"></i>Event-time OFI (0.1 s)</span></div>
+      <canvas id="c-ofi" aria-label="Imbalance chart"></canvas>
+    </section>
+  </div>
+
+  <section class="card about">
+    <p><strong>What this is.</strong> The models are the ridge regressions from steps 6–7 of the project, trained offline on a historical BTCUSDT day and applied here unchanged. The Hawkes intensity is the one-step-ahead forecast with the parameters fitted that day.</p>
+    <p><strong>How to read it.</strong> A few minutes of scores is noise; offline, the gains were 1–3 percentage points over whole days. The CI is per model; the gain lines ignore serial correlation, so treat them as indicative.</p>
+    <p id="model-info"></p>
+  </section>
 </div>
 
 <script>
@@ -168,7 +339,25 @@ td.m { font-family: var(--mono); font-size: 12.5px; color: var(--deep); }
   const WINDOW = 600;
   const rows = [];
   const hitHist = [];
-  const MODELS = [["baseline_ewma", "Baseline", "--ewma"], ["with_hawkes", "+Hawkes", "--hawkes"], ["event_time", "+Event-time", "--event"]];
+  const ALL_MODELS = [["baseline_ewma", "Baseline", "--ewma"], ["with_hawkes", "+Hawkes", "--hawkes"], ["event_time", "+Event-time", "--event"], ["hawkes_ensemble", "Hawkes ensemble", "--ens"]];
+  let MODELS = ALL_MODELS.slice(0, 3);
+  // Books each family actually runs (the monitor prunes models per family; see docs/strategy_validation.md).
+  const KEYS = { taker: null, maker: null, exec: null, featured: null };
+  let HAS_EV = false;   // event-driven books exist when the model carries the exact Hawkes fit
+  function noteKeys(sc) {
+    if (!sc) return;
+    const ks = o => o ? new Set(Object.keys(o).filter(k => o[k] && typeof o[k] === "object")) : null;
+    KEYS.taker = ks(sc.paper); KEYS.maker = ks(sc.maker); KEYS.exec = ks(sc.execution);
+    KEYS.featured = sc.execution ? sc.execution.featured : null;
+    if (sc.maker) HAS_EV = !!sc.maker.ev_none;
+    const show = (sel, ok) => document.querySelectorAll(sel).forEach(el => { el.hidden = !ok(el); });
+    if (KEYS.maker) show("[data-maker]", el => KEYS.maker.has(el.dataset.maker));
+    if (KEYS.taker) show("[data-taker]", el => KEYS.taker.has(el.dataset.taker));
+    show("[data-model]", el => el.dataset.model in sc);
+    if (KEYS.exec) show("[data-exec]", el => KEYS.exec.has("passive_" + el.dataset.exec));
+  }
+  const takerModels = () => MODELS.filter(([k]) => !KEYS.taker || KEYS.taker.has(k));
+  const lineWidth = k => k === "hawkes_ensemble" || k === "ev_hawkes" ? 2.4 : 1.6;
   const $ = id => document.getElementById(id);
   const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const fmt = (v, d = 2) => v == null || Number.isNaN(v) ? "—" : v.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -183,41 +372,77 @@ td.m { font-family: var(--mono); font-size: 12.5px; color: var(--deep); }
   // Round time step in ms: 5 s up to 1 h.
   const TIME_STEPS = [5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600].map(s => s * 1000);
 
-  function chart(canvas, series, opts = {}) {
+  const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const ANIM_MS = 450;
+  const easeOut = k => 1 - Math.pow(1 - k, 3);
+  const finite = v => v != null && Number.isFinite(v);
+
+  // Target view for a set of series: data extent with a little headroom (not snapped, so it can glide).
+  function domainOf(series, opts) {
+    const pts = series.flatMap(s => s.type === "candles"
+      ? s.data.filter(p => finite(p[2]) && finite(p[3])).flatMap(p => [[p[0], p[3]], [p[0] + s.width, p[2]]])
+      : s.data.filter(p => finite(p[1])));
+    if (pts.length < 2) return null;
+    let x0 = Math.min(...pts.map(p => p[0])), x1 = Math.max(...pts.map(p => p[0]));
+    if (x1 === x0) x1 = x0 + 1000;
+    let y0 = opts.y0 ?? Math.min(...pts.map(p => p[1])), y1 = opts.y1 ?? Math.max(...pts.map(p => p[1]));
+    if (y1 - y0 < 1e-12) { const c = y0; y0 = c - (Math.abs(c) || 1) * 0.01; y1 = c + (Math.abs(c) || 1) * 0.01; }
+    const pad = (y1 - y0) * 0.08, band = (y1 - y0) * (opts.bandPad || 0);
+    return { x0, x1, y0: opts.y0 ?? y0 - pad - band, y1: opts.y1 ?? y1 + pad };
+  }
+
+  // Monotone cubic (Fritsch-Carlson) through pixel points: smooth, never overshoots the data.
+  function smoothPath(g, P) {
+    const n = P.length;
+    if (n < 2) return;
+    g.moveTo(P[0][0], P[0][1]);
+    if (n === 2) { g.lineTo(P[1][0], P[1][1]); return; }
+    const d = [], m = new Array(n);
+    for (let i = 0; i < n - 1; i++) d.push((P[i + 1][1] - P[i][1]) / ((P[i + 1][0] - P[i][0]) || 1e-9));
+    m[0] = d[0]; m[n - 1] = d[n - 2];
+    for (let i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+    for (let i = 0; i < n - 1; i++) {
+      if (d[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+      const a = m[i] / d[i], b = m[i + 1] / d[i], s = a * a + b * b;
+      if (s > 9) { const t = 3 / Math.sqrt(s); m[i] = t * a * d[i]; m[i + 1] = t * b * d[i]; }
+    }
+    for (let i = 0; i < n - 1; i++) {
+      const dx = (P[i + 1][0] - P[i][0]) / 3;
+      g.bezierCurveTo(P[i][0] + dx, P[i][1] + m[i] * dx, P[i + 1][0] - dx, P[i + 1][1] - m[i + 1] * dx, P[i + 1][0], P[i + 1][1]);
+    }
+  }
+
+  function draw(canvas, series, opts, D) {
     const dpr = window.devicePixelRatio || 1;
     const w = canvas.clientWidth, h = canvas.clientHeight;
     if (!w || !h) return;
-    canvas.width = w * dpr; canvas.height = h * dpr;
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+      canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    }
     const g = canvas.getContext("2d");
     g.setTransform(dpr, 0, 0, dpr, 0, 0);
     g.clearRect(0, 0, w, h);
     const mono = css("--mono") || "monospace";
     g.font = "11px " + mono;
-    const pts = series.flatMap(s => s.data.filter(p => p[1] != null && Number.isFinite(p[1])));
-    if (pts.length < 2) {
+    if (!D) {
       g.fillStyle = css("--muted"); g.font = "12px " + css("--font");
       g.fillText("Waiting for data…", 12, h / 2); return;
     }
-
-    // y range and round ticks
-    let y0 = opts.y0 ?? Math.min(...pts.map(p => p[1])), y1 = opts.y1 ?? Math.max(...pts.map(p => p[1]));
-    if (y1 - y0 < 1e-12) { const c = y0; y0 = c - (Math.abs(c) || 1) * 0.01; y1 = c + (Math.abs(c) || 1) * 0.01; }
+    const { x0, x1, y0, y1 } = D;
     const yStep = niceStep(y1 - y0, Math.max(3, Math.floor(h / 45)));
-    y0 = Math.floor(y0 / yStep) * yStep; y1 = Math.ceil(y1 / yStep) * yStep;
     const yTicks = [];
-    const nTicks = Math.round((y1 - y0) / yStep);
-    for (let i = 0; i <= nTicks; i++) { const v = y0 + i * yStep; yTicks.push(Math.abs(v) < yStep * 1e-9 ? 0 : v); }
+    const firstTick = Math.ceil(y0 / yStep) * yStep;
+    for (let i = 0; i < 50; i++) {
+      const v = firstTick + i * yStep;
+      if (v > y1 + yStep * 1e-9) break;
+      yTicks.push(Math.abs(v) < yStep * 1e-9 ? 0 : v);
+    }
     const yFmt = opts.yFmt || (v => v.toFixed(2));
-
-    // margins sized from the labels
     const T = 10, B = 24, R = 14;
-    const L = Math.ceil(Math.max(...yTicks.map(v => g.measureText(yFmt(v, yStep)).width))) + 14;
-    let x0 = Math.min(...pts.map(p => p[0])), x1 = Math.max(...pts.map(p => p[0]));
-    if (x1 === x0) x1 = x0 + 1000;
+    const L = Math.ceil(Math.max(40, ...yTicks.map(v => g.measureText(yFmt(v, yStep)).width))) + 14;
     const X = t => L + (t - x0) / (x1 - x0) * (w - L - R);
     const Y = v => T + (1 - (v - y0) / (y1 - y0)) * (h - T - B);
 
-    // grid + y labels
     g.lineWidth = 1; g.strokeStyle = css("--grid"); g.fillStyle = css("--muted");
     g.textAlign = "right"; g.textBaseline = "middle";
     for (const v of yTicks) {
@@ -229,8 +454,6 @@ td.m { font-family: var(--mono); font-size: 12.5px; color: var(--deep); }
       g.strokeStyle = css("--muted"); const y = Math.round(Y(0)) + 0.5;
       g.beginPath(); g.moveTo(L, y); g.lineTo(w - R, y); g.stroke();
     }
-
-    // x labels: round times, spaced so they never overlap
     const sample = g.measureText("00:00:00").width + 18;
     const maxLabels = Math.max(2, Math.floor((w - L - R) / sample));
     const step = TIME_STEPS.find(s => (x1 - x0) / s <= maxLabels) || TIME_STEPS[TIME_STEPS.length - 1];
@@ -244,26 +467,90 @@ td.m { font-family: var(--mono); font-size: 12.5px; color: var(--deep); }
       g.fillText(label, x, h - B + 7);
       lastRight = x + half;
     }
-
-    // series, clipped to the plot area
     g.save(); g.beginPath(); g.rect(L, T - 2, w - L - R, h - T - B + 4); g.clip();
+    const lastPts = [];
     for (const s of series) {
-      g.strokeStyle = css(s.color); g.lineWidth = s.width || 1.6; g.setLineDash(s.dash ? [5, 4] : []);
-      g.lineJoin = "round"; g.beginPath(); let started = false;
+      if (s.type === "candles") { drawCandles(g, s, X, Y, h - B, T); continue; }
+      const runs = [];
+      let run = [];
       for (const [t, v] of s.data) {
-        if (v == null || !Number.isFinite(v)) { started = false; continue; }
-        if (!started) { g.moveTo(X(t), Y(v)); started = true; } else g.lineTo(X(t), Y(v));
+        if (!finite(v)) { if (run.length) runs.push(run); run = []; continue; }
+        run.push([X(t), Y(v)]);
       }
+      if (run.length) runs.push(run);
+      const trace = r => { if (s.step) r.forEach(([x, y], i) => i ? (g.lineTo(x, r[i - 1][1]), g.lineTo(x, y)) : g.moveTo(x, y)); else smoothPath(g, r); };
+      if (s.fill) {
+        const base = Y(Math.min(Math.max(0, y0), y1));
+        g.fillStyle = css(s.color); g.globalAlpha = 0.14;
+        for (const r of runs) { if (r.length < 2) continue; g.beginPath(); trace(r); g.lineTo(r[r.length - 1][0], base); g.lineTo(r[0][0], base); g.closePath(); g.fill(); }
+        g.globalAlpha = 1;
+      }
+      g.strokeStyle = css(s.color); g.lineWidth = s.width || 2; g.setLineDash(s.dash ? [5, 4] : []);
+      g.lineJoin = "round"; g.lineCap = "round"; g.beginPath();
+      for (const r of runs) trace(r);
       g.stroke();
+      const last = [...s.data].reverse().find(p => finite(p[1]));
+      if (last && s.dot !== false) lastPts.push([X(last[0]), Y(last[1]), s.color]);
     }
-    g.restore();
     g.setLineDash([]);
-    for (const s of series) {
-      if (s.dot === false) continue;
-      const last = [...s.data].reverse().find(p => p[1] != null && Number.isFinite(p[1]));
-      if (last) { g.fillStyle = css(s.color); g.beginPath(); g.arc(X(last[0]), Y(last[1]), 3, 0, 7); g.fill(); }
+    for (const [x, y, c] of lastPts) { g.fillStyle = css(c); g.beginPath(); g.arc(x, y, 3, 0, 7); g.fill(); }
+    g.restore();
+  }
+
+  // Candles: lime up, red down, with buy/sell volume in a band along the bottom of the plot.
+  function drawCandles(g, s, X, Y, bottom, top) {
+    const up = css("--candle-up"), upEdge = css("--candle-up-edge"), down = css("--candle-down");
+    const vmax = Math.max(1e-12, ...s.data.map(p => p[5] || 0));
+    const band = (bottom - top) * 0.2;
+    for (const [t, o, hi, lo, c, v, vb] of s.data) {
+      if (!finite(o) || !finite(c)) continue;
+      const x0 = X(t), x1 = X(t + s.width), w = Math.max(2, (x1 - x0) * 0.68), cx = (x0 + x1) / 2;
+      if (v > 0) {   // volume: buy share in lime, sell share in red, stacked
+        const hTot = band * v / vmax, hBuy = hTot * (vb || 0) / v;
+        g.globalAlpha = 0.35;
+        g.fillStyle = up; g.fillRect(cx - w / 2, bottom - hBuy, w, hBuy);
+        g.fillStyle = down; g.fillRect(cx - w / 2, bottom - hTot, w, hTot - hBuy);
+        g.globalAlpha = 1;
+      }
+      const rising = c >= o;
+      g.strokeStyle = rising ? upEdge : down; g.lineWidth = 1.2;
+      g.beginPath(); g.moveTo(Math.round(cx) + 0.5, Y(hi)); g.lineTo(Math.round(cx) + 0.5, Y(lo)); g.stroke();
+      const yTop = Y(Math.max(o, c)), hBody = Math.max(1.5, Math.abs(Y(o) - Y(c)));
+      g.fillStyle = rising ? up : down;
+      g.fillRect(cx - w / 2, yTop, w, hBody);
+      if (rising) { g.strokeRect(cx - w / 2 + 0.5, yTop + 0.5, w - 1, Math.max(0.5, hBody - 1)); }
     }
   }
+
+  // Each chart glides from its current view to the new one instead of jumping.
+  const charts = new Map();
+  let rafId = null;
+  function tick(now) {
+    rafId = null;
+    for (const [canvas, st] of charts) {
+      if (!st.to) continue;
+      const k = st.start == null ? 1 : Math.min(1, (now - st.start) / ANIM_MS);
+      const e = easeOut(k);
+      st.cur = st.from ? Object.fromEntries(Object.keys(st.to).map(key => [key, st.from[key] + (st.to[key] - st.from[key]) * e])) : st.to;
+      draw(canvas, st.series, st.opts, st.cur);
+      if (k < 1) rafId = rafId || requestAnimationFrame(tick);
+      else st.start = null;
+    }
+  }
+  function chart(canvas, series, opts = {}) {
+    const target = domainOf(series, opts);
+    let st = charts.get(canvas);
+    if (!st) { st = {}; charts.set(canvas, st); }
+    st.series = series; st.opts = opts;
+    if (!target) { st.to = null; draw(canvas, series, opts, null); return; }
+    const animate = !REDUCED && st.cur && !opts.instant;
+    st.from = animate ? { ...st.cur } : null;
+    st.to = target;
+    st.start = animate ? performance.now() : null;
+    if (!animate) { st.cur = target; draw(canvas, series, opts, target); return; }
+    rafId = rafId || requestAnimationFrame(tick);
+  }
+  function redrawAll() { for (const [canvas, st] of charts) draw(canvas, st.series, st.opts, st.cur || st.to); }
 
   // Tick label formatters: decimals follow the tick step, so labels stay short and round.
   const dec = step => {
@@ -273,16 +560,26 @@ td.m { font-family: var(--mono); font-size: 12.5px; color: var(--deep); }
   };
   const fmtNum = (v, step) => v.toFixed(dec(step));
   const fmtPct = (v, step) => (100 * v).toFixed(dec(step * 100)) + "%";
-  const fmtUsd = (v, step) => (v < 0 ? "−$" : "$") + Math.abs(v).toFixed(dec(step));
+  const fmtUsd = (v, step) => (v < 0 ? "−$" : "$") + Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: dec(step), maximumFractionDigits: dec(step) });
+
+  const CANDLE_MS = 10_000;
+  function candles(r) {
+    const out = new Map();
+    for (const x of r) {
+      if (!finite(x.last)) continue;
+      const k = Math.floor(x.t / CANDLE_MS) * CANDLE_MS;
+      const signedBuy = Math.max(0, ((x.volume || 0) + (x.signed_volume || 0)) / 2);
+      const c = out.get(k);
+      if (!c) out.set(k, [k, x.last, x.last, x.last, x.last, x.volume || 0, signedBuy]);
+      else { c[2] = Math.max(c[2], x.last); c[3] = Math.min(c[3], x.last); c[4] = x.last; c[5] += x.volume || 0; c[6] += signedBuy; }
+    }
+    return [...out.values()].sort((a, b) => a[0] - b[0]);
+  }
 
   function redraw() {
     const r = rows.slice(-WINDOW);
     const S = k => r.map(x => [x.t, x[k]]);
-    chart($("c-price"), [
-      { data: S("bid"), color: "--buy", width: 1, dot: false },
-      { data: S("ask"), color: "--sell", width: 1, dot: false },
-      { data: S("last"), color: "--ink", width: 1.8 },
-    ], { yFmt: fmtNum });
+    chart($("c-price"), [{ type: "candles", width: CANDLE_MS, data: candles(r) }], { yFmt: fmtNum, bandPad: 0.3 });
     chart($("c-int"), [
       { data: S("lam_b"), color: "--buy" }, { data: S("lam_s"), color: "--sell" },
       { data: S("ewm_b"), color: "--buy", dash: true, width: 1.2, dot: false },
@@ -292,12 +589,19 @@ td.m { font-family: var(--mono); font-size: 12.5px; color: var(--deep); }
       { data: S("et_ofi_fast"), color: "--event", width: 1 },
       { data: S("ewma_ofi"), color: "--ewma" }, { data: S("hawkes_ofi"), color: "--hawkes" },
     ], { yFmt: fmtNum, zero: true });
-    chart($("c-hit"), MODELS.map(([k, , c]) => ({ data: hitHist.map(h => [h.t, h[k]]), color: c })),
+    const hr = r.filter(x => x.hit);
+    chart($("c-hit"), MODELS.map(([k, , c]) => ({ data: hr.length ? hr.map(x => [x.t, x.hit[k]]) : hitHist.map(h => [h.t, h[k]]), color: c, width: lineWidth(k) })),
       { yFmt: fmtPct });
+    const er = r.filter(x => x.ex_saved);
+    chart($("c-ex"), execBooks().map(([k, , c, kind]) => ({ data: er.map(x => [x.t, x.ex_saved[k]]), color: c, dash: kind === "timing",
+      width: k.endsWith("hawkes_ensemble") ? 2.6 : 1.3, step: true })), { yFmt: fmtUsd, zero: true });
+    const mr = r.filter(x => x.mm_zero_fee);
+    chart($("c-mm"), makerBooks().map(([k, , c]) => ({ data: mr.map(x => [x.t, x.mm_zero_fee[k]]), color: c, width: lineWidth(k.replace("as_", "")), dash: k === "as_none" })),
+      { yFmt: fmtUsd, zero: true });
     const pr = r.filter(x => x.pnl_net);
     chart($("c-pnl"), [
-      ...MODELS.map(([k, , c]) => ({ data: pr.map(x => [x.t, x.pnl_gross[k]]), color: c, dash: true, width: 1, dot: false })),
-      ...MODELS.map(([k, , c]) => ({ data: pr.map(x => [x.t, x.pnl_net[k]]), color: c })),
+      ...takerModels().map(([k, , c]) => ({ data: pr.map(x => [x.t, x.pnl_gross[k]]), color: c, dash: true, width: 1, dot: false })),
+      ...takerModels().map(([k, , c]) => ({ data: pr.map(x => [x.t, x.pnl_net[k]]), color: c, width: lineWidth(k) })),
     ], { yFmt: fmtUsd, zero: true });
   }
 
@@ -316,20 +620,21 @@ td.m { font-family: var(--mono); font-size: 12.5px; color: var(--deep); }
   function onRow(row, scores, msg) {
     rows.push(row); if (rows.length > 3600) rows.shift();
     const spread = row.ask != null && row.bid != null ? row.ask - row.bid : null;
-    $("k-last").textContent = fmt(row.last);
+    const pdp = row.last == null || row.last >= 10 ? 2 : row.last >= 1 ? 4 : 5;   // cheaper coins need more decimals
+    $("k-last").textContent = fmt(row.last, pdp);
     $("k-ret").textContent = row.ret == null ? "—" : (row.ret >= 0 ? "+" : "") + (row.ret * 1e4).toFixed(2) + " bp over 1 s";
-    $("k-ba").textContent = row.bid == null ? "—" : fmt(row.bid) + " / " + fmt(row.ask);
-    $("k-spread").textContent = spread == null ? "no book in replay" : "spread " + fmt(spread) + " (" + (1e4 * spread / row.last).toFixed(4) + " bp)";
+    $("k-ba").textContent = row.bid == null ? "—" : fmt(row.bid, pdp) + " / " + fmt(row.ask, pdp);
+    $("k-spread").textContent = spread == null ? "no book in replay" : "spread " + fmt(spread, pdp) + " (" + (1e4 * spread / row.last).toFixed(pdp > 2 ? 2 : 4) + " bp)";
     $("k-trades").innerHTML = `<span style="color:var(--buy)">${row.n_buy}</span> / <span style="color:var(--sell)">${row.n_sell}</span>`;
     $("k-trades-s").textContent = "buy / sell aggressor" + (msg && msg.late_trades ? ` · ${msg.late_trades} late` : "");
     if (scores) updateScores(scores, row.t);
   }
 
-  const usd = v => { const d = Math.abs(v) >= 1000 ? 0 : 2; return (v < 0 ? "−$" : "$") + Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d }); };
+  const usd = v => { if (Math.abs(v) < 0.005) v = 0; const d = Math.abs(v) >= 1000 ? 0 : 2; return (v < 0 ? "−$" : "$") + Math.abs(v).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d }); };
   function updatePnl(pp) {
     if (!pp) return;
     $("pnl-sub").textContent = `Each model holds ${usd(pp.notional)} long or short by the sign of its 1 s forecast, trading only when the sign flips, and pays ${pp.fee_bps} bp per side (Binance standard taker fee). Paper only.`;
-    $("pnl-body").innerHTML = MODELS.map(([k, label, c]) => {
+    $("pnl-body").innerHTML = takerModels().filter(([k]) => pp[k]).map(([k, label, c]) => {
       const x = pp[k];
       const cls = v => v > 0 ? "pos" : v < 0 ? "neg" : "";
       return `<tr><td><span class="sw" style="background:var(${c})"></span>${label}</td>
@@ -340,8 +645,272 @@ td.m { font-family: var(--mono); font-size: 12.5px; color: var(--deep); }
     }).join("");
   }
 
+  const makerBooks = () => [["touch", "Touch (control)", "--touch"], ["as_none", "A–S, no signal", "--ctl"],
+    ...MODELS.map(([k, label, c]) => ["as_" + k, "A–S " + label.replace(/^\+/, "+ "), c]),
+    ...(HAS_EV ? [["ev_none", "Event-driven A–S, no signal", "--ev"], ["ev_hawkes", "Event-driven A–S + Hawkes", "--evh"]] : [])]
+    .filter(([k]) => !KEYS.maker || KEYS.maker.has(k));
+  function updateMaker(mk) {
+    if (!mk) return;
+    HAS_EV = !!mk.ev_none;
+    $("mm-sub").textContent = `${usd(mk.notional)} a side, re-quoted every second. Touch: joins the best bid and ask. A–S: Avellaneda–Stoikov quotes as in the C++ engine (fill decay k calibrated on this pair's history), each model book adding its forecast as skew and widen/pull protection. Event-driven books (where shown) re-price on every trade and best bid/ask change, with each decision reaching the market after the stated latency; the Hawkes one also pulls the threatened side during a Hawkes burst (log buy/sell intensity, from kernels slower than the latency, in the top or bottom 2% of its recent history). Fills from real trades with first-in-first-out queues. Inventory cap ${usd(mk.inventory_limit)}; net uses the ${mk.fee_bps} bp standard maker fee. Paper only.`;
+    if (!mk.live_book) return;
+    const books = makerBooks();
+    const cls = v => v > 0 ? "pos" : v < 0 ? "neg" : "";
+    const edge = x => x && x.volume > 0 ? 1e4 * x.pnl_zero_fee / x.volume : null;
+    const ref = edge(mk.as_none), refEv = edge(mk.ev_none);
+    const sgn = v => v == null ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(2);
+    $("mm-body").innerHTML = books.filter(([k]) => mk[k]).map(([k, label, c]) => {
+      const x = mk[k];
+      const bp = v => v == null ? "—" : v.toFixed(2);
+      const e = edge(x);
+      const d = k === "ev_hawkes" ? (e != null && refEv != null ? e - refEv : null)
+        : k.startsWith("as_") && k !== "as_none" && e != null && ref != null ? e - ref : null;
+      return `<tr${k === "as_hawkes_ensemble" ? ' class="ens-row"' : ""}><td><span class="sw" style="background:var(${c})"></span>${label}</td>
+        <td class="money">${usd(x.inventory_usd)}</td><td class="money">${x.fills.toLocaleString()}</td>
+        <td class="money">${bp(x.spread_bp)}</td><td class="money ${cls(x.markout_10s_bp)}">${bp(x.markout_10s_bp)}</td>
+        <td class="money ${cls(x.pnl_zero_fee)}">${usd(x.pnl_zero_fee)}</td>
+        <td class="money ${cls(e)}">${sgn(e)}</td>
+        <td class="money ${cls(d)}">${k === "as_none" || k === "ev_none" ? "ref" : k === "touch" ? "" : `<strong>${sgn(d)}</strong>`}</td>
+        <td class="money ${cls(x.pnl_net)}"><strong>${usd(x.pnl_net)}</strong></td></tr>`;
+    }).join("");
+    const signal = books.map(([k]) => k).filter(k => k.startsWith("as_") && k !== "as_none" && mk[k] && edge(mk[k]) != null);
+    const box = $("mm-zero");
+    if (ref == null || !signal.length) { box.hidden = true; return; }
+    const better = signal.filter(k => edge(mk[k]) > ref);
+    const ens = mk.as_hawkes_ensemble ? edge(mk.as_hawkes_ensemble) : null;
+    box.hidden = false;
+    box.innerHTML = `<b>At 0 fees</b>, ${better.length} of ${signal.length} forecast books lose less per dollar than the same quotes with no signal (${sgn(ref)} bp).` +
+      (ens != null ? ` Hawkes ensemble: <b>${sgn(ens)} bp</b>, ${ens >= ref ? "<b>" + sgn(ens - ref) + " bp better</b>" : sgn(ens - ref) + " bp worse"} than no signal.` : "") +
+      (refEv != null && mk.ev_hawkes && edge(mk.ev_hawkes) != null
+        ? ` <b>Event-driven</b> (re-priced on every trade and quote change, ${mk.ev_latency_ms ?? 50} ms latency): no signal ${sgn(refEv)} bp, ` +
+          `with Hawkes ${sgn(edge(mk.ev_hawkes))} bp (${edge(mk.ev_hawkes) >= refEv ? "<b>" + sgn(edge(mk.ev_hawkes) - refEv) + " bp better</b>" : sgn(edge(mk.ev_hawkes) - refEv) + " bp worse"}); speed alone ${sgn(refEv - ref)} bp vs the one-second book.`
+        : ` Both are negative before fees: one-second quotes are picked off by faster flow (see markouts).`);
+  }
+
+  // Numbers count smoothly to their new value.
+  function tweenText(el, to, format) {
+    const from = el._v ?? to;
+    el._v = to;
+    if (REDUCED || from === to) { el.textContent = format(to); return; }
+    const start = performance.now();
+    const step = now => {
+      const k = Math.min(1, (now - start) / 500), v = from + (to - from) * easeOut(k);
+      el.textContent = format(v);
+      if (k < 1 && el._v === to) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  let selectedKey = null;
+  let lastScores = null;
+  const leaderRows = new Map();   // key -> <tr>
+
+  const EXEC_COLOR = k => (ALL_MODELS.find(([m]) => m === k) || [, , "--ctl"])[2];
+  const execBooks = () => [["passive_none", "Passive, no signal", "--ctl", "passive"],
+    ...MODELS.flatMap(([k, label]) => { const f = k === "baseline_ewma" ? "" : " (per-trade)";
+      return [["passive_" + k, "Passive + " + label.replace(/^\+/, "") + f, EXEC_COLOR(k), "passive"],
+              ["timing_" + k, "Timing + " + label.replace(/^\+/, "") + f, EXEC_COLOR(k), "timing"]]; })]
+    .filter(([k]) => !KEYS.exec || KEYS.exec.has(k));
+
+  function strategyRows(sc) {
+    const rows = [];
+    // Main scoreboard: every market maker and taker; execution shows the baseline and the pair's validated Hawkes
+    // model (the rest of the execution books are in the execution card).
+    const feat = sc.execution && sc.execution.featured;
+    const LBL = { hawkes_ensemble: "Hawkes ensemble", with_hawkes: "+Hawkes (1 s)", baseline_ewma: "Baseline", event_time: "+Event-time" };
+    // execution: the baseline (comparison) and the Hawkes model validated best for this pair (★)
+    const execKeys = feat ? ["baseline_ewma", feat].flatMap(m => ["timing_" + m, "passive_" + m]) : ["passive_none"];   // model-free: the control
+    if (sc.execution) execKeys.forEach(k => {
+      const x = sc.execution[k]; if (!x) return;
+      const m = k.replace(/^(timing|passive)_/, "");
+      const fast = m === "with_hawkes" || m === "hawkes_ensemble";
+      rows.push({ key: "exec:" + k, model: k, name: "Execution: " + (k.startsWith("passive") ? "passive" : "timing") + ", " + (LBL[m] || "no signal") + (fast ? " (per-trade)" : "") + (m === feat ? " ★" : ""),
+                  kind: "exec", color: EXEC_COLOR(m), trades: x.orders, before: x.price_saved, fees: x.fee_diff, after: x.saved, raw: x });
+    });
+    if (sc.paper) MODELS.filter(([k]) => sc.paper[k]).forEach(([k, label, c]) => {
+      const x = sc.paper[k];
+      rows.push({ key: "taker:" + k, model: k, name: "Trade the forecast: " + (LBL[k] || label), kind: "taker", color: c,
+                  trades: Math.round(x.traded / sc.paper.notional), before: x.gross, fees: x.fees, after: x.net, raw: x });
+    });
+    const mkKeys = ["touch", "as_none", ...MODELS.map(([k]) => "as_" + k), "ev_none", "ev_hawkes"];
+    if (sc.maker && sc.maker.live_book) makerBooks().filter(([k]) => mkKeys.includes(k)).forEach(([k, label, c]) => {
+      const x = sc.maker[k]; if (!x) return;
+      rows.push({ key: "maker:" + k, model: k, name: "Market maker: " + label, kind: "maker", color: c,
+                  trades: x.fills, before: x.pnl_zero_fee, fees: x.fees, after: x.pnl_net, raw: x });
+    });
+    return rows.sort((a, b) => b.after - a.after);
+  }
+
+  function makeRow(r) {
+    const tr = document.createElement("tr");
+    tr.dataset.key = r.key;
+    tr.tabIndex = 0;
+    tr.setAttribute("role", "button");
+    tr.innerHTML = `<td class="rank"></td>
+      <td><span class="sw" style="background:var(${r.color})"></span>${r.name}</td>
+      <td><span class="kind ${r.kind}">${r.kind === "maker" ? "Market maker" : r.kind === "exec" ? "Execution" : "Taker"}</span></td>
+      <td class="money c-trades"></td><td class="money c-before"></td><td class="money c-fees"></td>
+      <td class="money c-after"><strong></strong></td>
+      <td><div class="bar"><span></span></div></td>`;
+    const open = () => selectStrategy(selectedKey === r.key ? null : r.key);
+    tr.addEventListener("click", open);
+    tr.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+    return tr;
+  }
+
+  function updateLeader(sc) {
+    lastScores = sc;
+    const rows = strategyRows(sc);
+    if (!rows.length) return;
+    const tbody = $("leader-body");
+    const before = new Map([...leaderRows].map(([k, tr]) => [k, { top: tr.getBoundingClientRect().top, rank: +tr.dataset.rank }]));
+    const maxAbs = Math.max(...rows.map(r => Math.abs(r.after)), 1);
+    const cls = v => v > 0 ? "pos" : v < 0 ? "neg" : "";
+    rows.forEach((r, i) => {
+      let tr = leaderRows.get(r.key);
+      if (!tr) { tr = makeRow(r); leaderRows.set(r.key, tr); }
+      tr.dataset.rank = i + 1;
+      tr.classList.toggle("top", i === 0);
+      tr.classList.toggle("selected", r.key === selectedKey);
+      tr.setAttribute("aria-expanded", r.key === selectedKey);
+      tr.querySelector(".rank").innerHTML = `<span>${i + 1}</span>`;
+      tweenText(tr.querySelector(".c-trades"), r.trades, v => Math.round(v).toLocaleString());
+      const b = tr.querySelector(".c-before"), a = tr.querySelector(".c-after strong");
+      b.className = "money c-before " + cls(r.before);
+      tr.querySelector(".c-after").className = "money c-after " + cls(r.after);
+      tweenText(b, r.before, usd);
+      tweenText(tr.querySelector(".c-fees"), r.fees, usd);
+      tweenText(a, r.after, usd);
+      const bar = tr.querySelector(".bar span");
+      bar.className = r.after >= 0 ? "pos" : "neg";
+      bar.style.width = (50 * Math.abs(r.after) / maxAbs).toFixed(1) + "%";
+      tbody.appendChild(tr);   // re-orders in place
+    });
+    for (const [k, tr] of leaderRows) if (!rows.some(r => r.key === k)) { tr.remove(); leaderRows.delete(k); }
+    tbody.querySelectorAll(".empty-row").forEach(e => e.remove());
+
+    // FLIP: slide each row from where it was to where it is now; flash rank changes.
+    if (!REDUCED) for (const [k, prev] of before) {
+      const tr = leaderRows.get(k); if (!tr) continue;
+      const dy = prev.top - tr.getBoundingClientRect().top;
+      if (Math.abs(dy) > 1) {
+        tr.style.transition = "none";
+        tr.style.transform = `translateY(${dy}px)`;
+        tr.classList.remove("moved-up", "moved-down");
+        void tr.offsetWidth;
+        tr.style.transition = "transform 600ms cubic-bezier(.2,.8,.2,1)";
+        tr.style.transform = "";
+        tr.classList.add(+tr.dataset.rank < prev.rank ? "moved-up" : "moved-down");
+        setTimeout(() => tr.classList.remove("moved-up", "moved-down"), 1300);
+      }
+    }
+
+    const profitable = rows.filter(r => r.after > 0).length;
+    const bestBefore = rows.reduce((x, y) => y.before > x.before ? y : x);
+    $("leader-summary").innerHTML = profitable
+      ? `<b>${profitable} of ${rows.length}</b> strategies are ahead after fees (execution rows: $ saved vs. trading immediately). Leader: <b>${rows[0].name}</b> (${usd(rows[0].after)}).`
+      : `<b>None of the ${rows.length} strategies is ahead after fees.</b> Losing least: <b>${rows[0].name}</b> (${usd(rows[0].after)}). Best before fees: <b>${bestBefore.name}</b> (${usd(bestBefore.before)}). Click a row to see its chart.`;
+    if (!selectedKey && location.hash.length > 1) {
+      const wanted = [...leaderRows.keys()].find(k => keyToHash(k) === location.hash.slice(1));
+      if (wanted) { selectStrategy(wanted); return; }
+    }
+    renderDetail();
+  }
+
+  const keyToHash = k => k ? k.replace(":", "-") : "";
+  function selectStrategy(key) {
+    selectedKey = key;
+    try { history.replaceState(null, "", key ? "#" + keyToHash(key) : location.pathname); } catch (e) { /* ignore */ }
+    for (const [k, tr] of leaderRows) { tr.classList.toggle("selected", k === key); tr.setAttribute("aria-expanded", k === key); }
+    $("detail").classList.toggle("open", !!key);
+    $("detail").setAttribute("aria-hidden", !key);
+    $("detail").inert = !key;
+    if (key) { charts.delete($("c-detail")); charts.delete($("c-detail-pos")); }
+    renderDetail(true);
+  }
+
+  function renderDetail(fresh = false) {
+    if (!selectedKey || !lastScores) return;
+    const r = strategyRows(lastScores).find(x => x.key === selectedKey);
+    if (!r) return;
+    $("d-sw").style.background = `var(${r.color})`;
+    $("d-name").textContent = r.name;
+    $("d-kind").className = "kind " + r.kind;
+    $("d-kind").textContent = r.kind === "maker" ? "Market maker" : r.kind === "exec" ? "Execution" : "Taker";
+    const bp = v => v == null ? "—" : v.toFixed(2) + " bp";
+    const stat = (label, value, c = "") => `<div class="stat"><div class="l">${label}</div><div class="v ${c}">${value}</div></div>`;
+    const cls = v => v > 0 ? "pos" : v < 0 ? "neg" : "";
+    const rank = +leaderRows.get(r.key)?.dataset.rank || 0;
+    let html = stat("Rank", `${rank} of ${leaderRows.size}`) + stat("After fees", usd(r.after), cls(r.after)) +
+               stat("Before fees", usd(r.before), cls(r.before)) + stat("Fees", usd(r.fees));
+    if (r.kind === "exec") {
+      const x = r.raw;
+      html += stat("Orders", x.orders.toLocaleString()) + stat("Saving per order", bp(x.saving_bp), cls(x.saving_bp)) +
+              stat("Maker fills", x.maker_share == null ? "—" : (100 * x.maker_share).toFixed(0) + "%") +
+              stat("Order in progress", x.active ? "Yes" : "No");
+    } else if (r.kind === "maker") {
+      const x = r.raw;
+      html += stat("Fills", x.fills.toLocaleString()) + stat("Volume", usd(x.volume)) + stat("Inventory", usd(x.inventory_usd)) +
+              stat("Spread at fill", bp(x.spread_bp)) + stat("Markout 1 s", bp(x.markout_1s_bp), cls(x.markout_1s_bp)) +
+              stat("Markout 10 s", bp(x.markout_10s_bp), cls(x.markout_10s_bp)) + stat("Quote pulls / widens", `${x.pulls} / ${x.widens}`);
+    } else {
+      const s = lastScores[r.model] || {};
+      html += stat("Position", r.raw.pos > 0 ? "Long" : r.raw.pos < 0 ? "Short" : "Flat") + stat("Flips", r.trades.toLocaleString()) +
+              stat("Hit rate", s.hit == null ? "—" : (100 * s.hit).toFixed(1) + "%") + stat("R²", s.r2 == null ? "—" : s.r2.toFixed(3));
+    }
+    $("d-stats").innerHTML = html;
+    const rr = rows.slice(-WINDOW);
+    const opt = { instant: fresh };
+    if (r.kind === "exec") {
+      const k = r.model;
+      chart($("c-detail"), [{ data: rr.filter(x => x.ex_saved).map(x => [x.t, x.ex_saved[k]]), color: "--exec", width: 2.6, fill: true, step: true }],
+            { yFmt: fmtUsd, zero: true, ...opt });
+      $("d-pos-title").textContent = "All execution strategies, $ saved";
+      chart($("c-detail-pos"), execBooks().map(([b, , c, kind]) => ({ data: rr.filter(x => x.ex_saved).map(x => [x.t, x.ex_saved[b]]), color: c, dash: kind === "timing", width: b === k ? 2.6 : 1.3, step: true })),
+            { yFmt: fmtUsd, zero: true, ...opt });
+    } else if (r.kind === "maker") {
+      const k = r.model;
+      chart($("c-detail"), [
+        { data: rr.filter(x => x.mm_zero_fee).map(x => [x.t, x.mm_zero_fee[k]]), color: r.color, dash: true, width: 1.2, dot: false },
+        { data: rr.filter(x => x.mm_net).map(x => [x.t, x.mm_net[k]]), color: r.color, width: 2.6, fill: true },
+      ], { yFmt: fmtUsd, zero: true, ...opt });
+      $("d-pos-title").textContent = "Inventory (USDT)";
+      chart($("c-detail-pos"), [{ data: rr.filter(x => x.mm_inv).map(x => [x.t, x.mm_inv[k]]), color: r.color, width: 2, fill: true }],
+            { yFmt: fmtUsd, zero: true, ...opt });
+    } else {
+      const k = r.model;
+      chart($("c-detail"), [
+        { data: rr.filter(x => x.pnl_gross).map(x => [x.t, x.pnl_gross[k]]), color: r.color, dash: true, width: 1.2, dot: false },
+        { data: rr.filter(x => x.pnl_net).map(x => [x.t, x.pnl_net[k]]), color: r.color, width: 2.6, fill: true },
+      ], { yFmt: fmtUsd, zero: true, ...opt });
+      $("d-pos-title").textContent = "Position (long = +1, short = −1)";
+      chart($("c-detail-pos"), [{ data: rr.filter(x => x.preds).map(x => [x.t, Math.sign(x.preds[k])]), color: r.color, width: 2, step: true, fill: true }],
+            { yFmt: fmtNum, y0: -1.2, y1: 1.2, zero: true, ...opt });
+    }
+  }
+
+  function updateExecution(ex) {
+    if (!ex) return;
+    $("ex-sub").textContent = `A ${usd(ex.notional)} order every ${ex.every_s} s (alternating buy / sell) to complete within ${ex.window_s} s. Benchmark: trade immediately as a taker. Passive rests at the best price as a maker and crosses when the forecast turns against it or at the deadline; timing waits as a taker while the forecast is favourable. Hawkes books are fast: besides the per-second rule they cross as soon as a Hawkes burst (top or bottom 2% of the log buy/sell intensity ratio, kernels slower than 50 ms) runs against the order, each cross reaching the market 50 ms after the trade. Baseline and no-signal books act once a second. Fee difference = strategy fees minus the benchmark's; fees are 10 bp of price × quantity, so filling at a better price pays a fraction of a cent less (negative), a worse price slightly more. Paper only.`;
+    const rowsEx = execBooks().filter(([k]) => ex[k]);
+    if (!rowsEx.some(([k]) => ex[k].orders > 0)) return;
+    const cls = v => v > 0 ? "pos" : v < 0 ? "neg" : "";
+    $("ex-body").innerHTML = rowsEx.map(([k, label, c]) => {
+      const x = ex[k];
+      return `<tr><td><span class="sw" style="background:var(${c})"></span>${label}</td><td class="money">${x.orders}</td>
+        <td class="money ${cls(x.saving_bp)}">${x.saving_bp == null ? "—" : x.saving_bp.toFixed(2) + " bp"}</td>
+        <td class="money ${cls(x.price_saved)}">${usd(x.price_saved)}</td><td class="money">${usd(x.fee_diff)}</td>
+        <td class="money ${cls(x.saved)}"><strong>${usd(x.saved)}</strong></td>
+        <td class="money">${x.maker_share == null ? "—" : (100 * x.maker_share).toFixed(0) + "%"}</td></tr>`;
+    }).join("");
+  }
+
   function updateScores(sc, t) {
+    noteKeys(sc);
+    updateExecution(sc.execution);
+    updateLeader(sc);
     updatePnl(sc.paper);
+    updateMaker(sc.maker);
     const base = sc.baseline_ewma;
     $("k-n").textContent = (base?.n || 0).toLocaleString();
     $("k-n-s").textContent = base?.n ? `${base.n_nonzero.toLocaleString()} with a real move (> 1.5 ticks)` : "predictions checked against the next second";
@@ -368,6 +937,9 @@ td.m { font-family: var(--mono); font-size: 12.5px; color: var(--deep); }
     ws.onmessage = ev => {
       const msg = JSON.parse(ev.data);
       if (msg.type === "init") {
+        MODELS = ALL_MODELS.filter(([k]) => msg.scores && k in msg.scores);
+        noteKeys(msg.scores);
+        document.querySelectorAll(".ens-only").forEach(el => { el.hidden = !MODELS.some(([k]) => k === "hawkes_ensemble"); });
         rows.length = 0; hitHist.length = 0;
         msg.history.forEach(r => onRow(r, null));
         if (msg.scores) updateScores(msg.scores, msg.history.length ? msg.history[msg.history.length - 1].t : Date.now());
@@ -381,7 +953,9 @@ td.m { font-family: var(--mono); font-size: 12.5px; color: var(--deep); }
     };
     ws.onclose = () => { setStatus(null); setTimeout(connect, 2000); };
   }
-  new ResizeObserver(redraw).observe(document.querySelector(".wrap"));
+  $("d-close").addEventListener("click", () => selectStrategy(null));
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && selectedKey) selectStrategy(null); });
+  new ResizeObserver(() => redrawAll()).observe(document.querySelector(".wrap"));
     connect();
 })();
 </script>

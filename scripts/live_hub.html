@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hawkes Pairs Hub</title>
+<style>
+/* Same flat language as live_dashboard.html: dark olive palette, solid colours, no shadows or gradients. */
+:root {
+  /* Dark olive theme, shared with live_dashboard.html. */
+  --bg: #1c1f17; --panel: #23271d; --bar: #2c3224; --ink: #c9c6a3; --muted: #8f9177; --rule: #383e2e; --grid: #2b3023;
+  --deep: #e6e1b8; --on-accent: #1c1f17; --blue: #7f9fc0; --blue-soft: #2a3140; --magenta: #c58bb8; --cyan: #6fb7c4;
+  --lime: #d9d28b; --lime-ink: #9fc26a; --lime-soft: #2e3622;
+  --exec: #ff3b30; --exec-soft: #3d2420;
+  --pos: #9fc26a; --neg: #e07a5f;
+  --warn: #e0b45a; --warn-soft: #3a3220; --bad: #e07a5f; --bad-soft: #3d2823;
+  --font: "Roboto", "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --mono: "Roboto Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+
+
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--ink); font: 400 14px/1.5 var(--font); display: flex; flex-direction: column; }
+
+.top { padding: 14px 16px 0; display: grid; gap: 10px; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 18px; background: var(--bar); color: var(--deep); border-radius: 14px; }
+.mark { width: 22px; height: 22px; border-radius: 6px; background: var(--lime); flex: none; }
+h1 { font-size: 19px; font-weight: 600; margin: 0; letter-spacing: -.01em; }
+header .note { color: var(--ink); font-size: 12.5px; }
+.spacer { flex: 1; }
+.pill { font-size: 12px; font-weight: 600; padding: 4px 10px 4px 8px; border-radius: 99px; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; color: var(--on-accent); background: var(--lime); }
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+
+/* coin rail */
+.rail { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+.tab { flex: none; display: grid; grid-template-columns: auto auto; align-items: center; gap: 0 10px; text-align: left; cursor: pointer;
+  background: var(--panel); border: 1.5px solid var(--rule); border-radius: 12px; padding: 7px 12px; font: inherit; color: var(--ink);
+  transition: background .18s, border-color .18s, transform .18s; min-width: 120px; }
+.tab:hover { border-color: var(--magenta); transform: translateY(-1px); }
+.tab:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+.tab .sy { font-family: var(--mono); font-weight: 700; font-size: 13.5px; color: var(--deep); display: flex; align-items: center; gap: 6px; }
+.tab .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--rule); flex: none; }
+.tab .dot.up { background: var(--lime); }
+.tab .dot.warn { background: var(--warn); }
+.tab .px { font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; grid-column: 1; }
+.tab .chg { font-family: var(--mono); font-size: 11.5px; font-weight: 600; grid-column: 2; grid-row: 2; justify-self: end; }
+.tab .badge { grid-column: 2; grid-row: 1; justify-self: end; font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; padding: 1px 6px; border-radius: 5px; }
+.tab.ov { min-width: 0; grid-template-columns: auto; }
+.tab.ov .sy { font-family: var(--font); }
+.tab[aria-selected="true"] { background: var(--blue); border-color: var(--blue); }
+.tab[aria-selected="true"] .sy { color: var(--on-accent); }
+.tab[aria-selected="true"] .px { color: var(--on-accent); opacity: .75; }
+.b-val { background: var(--lime); color: var(--on-accent); }
+.b-mod { background: var(--blue-soft); color: var(--blue); }
+.b-free { background: var(--grid); color: var(--muted); }
+.pos { color: var(--pos); } .neg { color: var(--neg); }
+.tab[aria-selected="true"] .pos, .tab[aria-selected="true"] .neg { color: var(--on-accent); }
+.tab[aria-selected="true"] .badge { background: var(--on-accent); color: var(--blue); }
+
+.views { flex: 1; min-height: 0; position: relative; }
+.view { position: absolute; inset: 0; overflow: auto; opacity: 0; visibility: hidden; transition: opacity .2s; }
+.view.on { opacity: 1; visibility: visible; }
+.view iframe { width: 100%; height: 100%; border: 0; display: block; background: var(--bg); }
+
+/* overview */
+.ov-wrap { max-width: 1400px; margin: 0 auto; padding: 14px 16px 28px; display: grid; gap: 14px; }
+.intro { font-size: 13px; color: var(--muted); max-width: 900px; margin: 0; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.card { background: var(--panel); border: 1px solid var(--rule); border-top: 5px solid var(--blue); border-radius: 14px; padding: 14px 16px 12px; cursor: pointer;
+  transition: border-color .18s, transform .18s; min-width: 0; text-align: left; font: inherit; color: inherit;
+  display: flex; flex-direction: column; justify-content: flex-start; }
+.card .vline { margin-top: auto; }
+.card:hover { border-color: var(--magenta); transform: translateY(-2px); }
+.card:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+.card.val { border-top-color: var(--lime); }
+.card.down { border-top-color: var(--rule); opacity: .7; }
+.c-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.c-sym { font-family: var(--mono); font-weight: 700; font-size: 17px; color: var(--deep); }
+.c-px { font-family: var(--mono); font-size: 14px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.c-chg { font-family: var(--mono); font-size: 12px; font-weight: 600; }
+.c-head .badge { margin-left: auto; font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; padding: 2px 7px; border-radius: 5px; }
+.lead { margin: 10px 0 8px; padding: 9px 12px; border-radius: 10px; background: var(--bar); color: var(--deep); display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.lead .l { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--lime); }
+.lead .n { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lead .v { font-family: var(--mono); font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rows { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 10px; font-size: 12.5px; align-items: baseline; }
+.rows > div { display: contents; }
+.rows .rk { color: var(--muted); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.rows .rn { color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rows .rn small { color: var(--muted); font-family: var(--mono); }
+.rows .m { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; text-align: right; }
+.rows .wide { grid-column: 2 / 4; font-family: var(--mono); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.k { display: inline-block; width: 8px; height: 8px; border-radius: 2px; }
+.k.maker { background: var(--blue); } .k.taker { background: var(--lime); } .k.exec { background: var(--exec); }
+.vline { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--rule); font-size: 12px; color: var(--muted); }
+.vline b { color: var(--deep); }
+
+.panel { background: var(--panel); border: 1px solid var(--rule); border-radius: 14px; padding: 16px 18px; min-width: 0; }
+.panel h2 { font-size: 15px; font-weight: 700; margin: 0 0 4px; color: var(--deep); display: flex; align-items: center; gap: 8px; }
+.panel h2::before { content: ""; width: 10px; height: 10px; border-radius: 3px; background: var(--lime); }
+.panel .sub { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
+.tbl-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th { text-align: right; font-size: 11px; font-weight: 700; color: var(--blue); text-transform: uppercase; letter-spacing: .06em; padding: 6px 10px; border-bottom: 2px solid var(--blue); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+td { text-align: right; padding: 7px 10px; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+td:first-child { font-weight: 700; color: var(--deep); }
+tbody tr { cursor: pointer; transition: background .15s; }
+tbody tr:hover { background: var(--blue-soft); }
+.yes { color: var(--lime-ink); font-weight: 700; } .no { color: var(--muted); }
+.down-note { padding: 40px 20px; text-align: center; color: var(--muted); }
+@media (max-width: 640px) { h1 { font-size: 16px; } header .note { display: none; } }
+</style>
+</head>
+<body>
+<div class="top">
+  <header>
+    <span class="mark"></span>
+    <h1>Hawkes Flow Monitor · all pairs</h1>
+    <span class="note">Paper trading on live Binance data. No orders, no keys.</span>
+    <span class="spacer"></span>
+    <span class="pill" id="live-count">connecting</span>
+  </header>
+  <nav class="rail" id="rail" role="tablist" aria-label="Pairs"></nav>
+</div>
+<div class="views" id="views">
+  <section class="view on" id="v-overview" role="tabpanel">
+    <div class="ov-wrap">
+      <p class="intro">Each card: <i class="k maker"></i> best market maker, <i class="k taker"></i> best taker, <i class="k exec"></i> best execution and the Hawkes timing strategy (the Hawkes model that validated best for this coin's execution); the last row compares the Hawkes-ensemble market maker with the same quotes without a signal, both at 0 fees, per dollar traded (positive = Hawkes helping). <b>Hawkes ✓</b>: the pair's Hawkes ensemble beat the baseline forecast on every out-of-sample test day (p &lt; 0.0125). <b>Not proven</b>: its models run live, but the offline test was not significant. Each pair is its own monitor: own Binance stream, own Hawkes models trained and validated on that pair's last week (train on day d−1, test on day d), own paper market makers, takers and execution books, all running in parallel. Click a pair for its full dashboard; ← → switch pairs.</p>
+      <div class="cards" id="cards"></div>
+      <div class="panel">
+        <h2>Does Hawkes forecast every pair? (offline validation)</h2>
+        <div class="sub">The Hawkes ensemble against the baseline on the 1 s return, cross-day: each test day uses only parameters fitted on the previous day. “Tests won” counts the 4 targets (1/5/10 s return, 1 s order flow) where the ensemble was better on every test day.</div>
+        <div class="tbl-wrap"><table>
+          <thead><tr><th>Pair</th><th>Tick</th><th>Days better (1 s)</th><th>p across days</th><th>Hit-rate gain</th><th>R² (1 s)</th><th>Ensemble tests won</th><th>Validated</th></tr></thead>
+          <tbody id="vtable"></tbody>
+        </table></div>
+      </div>
+    </div>
+  </section>
+</div>
+<script>
+(() => {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const rail = $("rail"), views = $("views");
+  let pairs = [], current = "overview";
+  const frames = new Map();
+  const BONF = 0.0125;
+
+  const fmtPx = v => v == null ? "–" : v >= 1000 ? v.toLocaleString("en-US", { maximumFractionDigits: 2 }) : v >= 10 ? v.toFixed(3) : v >= 1 ? v.toFixed(4) : v.toFixed(5);
+  const usd = v => { if (v == null) return "–"; if (Math.abs(v) < 0.005) v = 0;
+    return (v < 0 ? "−$" : "+$") + Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+  const cls = v => v == null || Math.abs(v) < 0.005 ? "" : v > 0 ? "pos" : "neg";
+  const chg = p => p.last && p.first ? 100 * (p.last / p.first - 1) : null;
+  const pct = v => v == null ? "" : (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(2) + "%";
+  const sgn = v => v == null ? "–" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(2);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  function badge(p) {
+    const v = p.validation;
+    if ((v && v.ensemble_beats_baseline_1s) || p.symbol === "BTCUSDT") return ["b-val", "Hawkes ✓"];   // BTC: steps 6-7, 24/24 tests
+    if (p.models && p.models.length) return ["b-mod", "not proven"];
+    if (v) return ["b-mod", "trained"];
+    return ["b-free", "model-free"];
+  }
+
+  // ---- rail
+  function tabHtml(p) {
+    const [bc, bt] = badge(p), c = chg(p);
+    const dot = !p.up ? "" : p.connected ? "up" : "warn";
+    return `<span class="sy"><span class="dot ${dot}"></span>${esc(p.symbol.replace("USDT", ""))}</span>` +
+      `<span class="badge ${bc}">${bt}</span><span class="px">${p.up ? fmtPx(p.last) : "down"}</span>` +
+      `<span class="chg ${cls(c)}">${pct(c)}</span>`;
+  }
+  function renderRail() {
+    if (!rail.children.length) {
+      const ov = document.createElement("button");
+      ov.className = "tab ov"; ov.dataset.key = "overview"; ov.setAttribute("role", "tab");
+      ov.innerHTML = `<span class="sy">Overview</span><span class="px">${pairs.length} pairs</span>`;
+      rail.appendChild(ov);
+      pairs.forEach(p => { const b = document.createElement("button"); b.className = "tab"; b.dataset.key = p.symbol; b.setAttribute("role", "tab"); rail.appendChild(b); });
+      rail.addEventListener("click", e => { const t = e.target.closest(".tab"); if (t) select(t.dataset.key); });
+    }
+    pairs.forEach(p => { const el = rail.querySelector(`[data-key="${p.symbol}"]`); if (el) el.innerHTML = tabHtml(p); });
+    rail.querySelectorAll(".tab").forEach(t => t.setAttribute("aria-selected", String(t.dataset.key === current)));
+  }
+
+  // ---- overview cards
+  function bestOf(p, kind) { return (p.board || []).filter(r => r.kind === kind).sort((a, b) => b.pnl - a.pnl)[0]; }
+  function cardHtml(p) {
+    const [bc, bt] = badge(p), c = chg(p), v = p.validation;
+    let body;
+    if (!p.up) body = `<div class="down-note">Not running${p.managed ? " — <code>live_hub.py start " + esc(p.symbol) + "</code>" : ""}</div>`;
+    else {
+      const lead = p.board && p.board[0];
+      const mk = bestOf(p, "maker"), tk = bestOf(p, "taker"), ex = bestOf(p, "exec");
+      const ens = (p.board || []).find(r => r.name === "timing_" + (p.featured_exec || "hawkes_ensemble"));
+      const bp = r => r && r.bp != null ? ` <small>${r.bp >= 0 ? "+" : "−"}${Math.abs(r.bp).toFixed(2)} bp</small>` : "";
+      const row = (k, label, r) => r ? `<div><span class="rk" title="${label}"><i class="k ${k}"></i></span><span class="rn" title="${label}: ${esc(r.label)}">${esc(r.label)}${bp(r)}</span><span class="m ${cls(r.pnl)}">${usd(r.pnl)}</span></div>` : "";
+      body = `<div class="lead"><div><div class="l">Leading</div><div class="n">${lead ? esc(lead.label) : "–"}</div></div><div class="v">${lead ? usd(lead.pnl) : "–"}</div></div>
+        <div class="rows">${row("maker", "Best maker", mk)}${row("taker", "Best taker", tk)}${row("exec", "Best execution", ex)}
+        ${ens && ens !== ex ? row("exec", "Hawkes timing", ens) : ""}
+        ${(() => { const e = p.maker_edge_0fee_bp || {}, a = e.as_hawkes_ensemble, b = e.as_none;
+            if (a == null || b == null) return "";
+            const d = a - b;
+            return `<div><span class="rk" title="Hawkes ensemble maker vs the same quotes with no signal, both at 0 fees"><i class="k maker"></i></span><span class="rn">Ensemble maker at 0 fees <small>${sgn(a)} vs ${sgn(b)} bp</small></span><span class="m ${cls(d)}">${sgn(d)} bp</span></div>`; })()}
+        ${(() => { const e = p.maker_edge_0fee_bp || {}, a = e.ev_hawkes, b = e.ev_none;
+            if (a == null || b == null) return "";
+            const d = a - b;
+            return `<div><span class="rk" title="Event-driven Hawkes maker vs the event-driven maker with no signal, both at 0 fees"><i class="k maker"></i></span><span class="rn">Fast Hawkes maker at 0 fees <small>${sgn(a)} vs ${sgn(b)} bp</small></span><span class="m ${cls(d)}">${sgn(d)} bp</span></div>`; })()}
+        <div><span class="rk"></span><span class="wide" style="text-align:left">Running ${(p.uptime_s / 3600).toFixed(1)} h · ${p.maker_fills.toLocaleString()} fills · ${p.exec_orders} orders</span></div></div>`;
+    }
+    const vl = v ? `<div class="vline">Hawkes ensemble beat the baseline on <b>${v.ensemble["future_ret_1s"].days_better}/${v.ensemble["future_ret_1s"].n_days}</b> test days (1 s return), p = ${v.ensemble["future_ret_1s"].p.toExponential(1)}</div>`
+      : p.symbol === "BTCUSDT" ? `<div class="vline">Validated in steps 6–7: ensemble <b>24/24</b> tests on 2024 BTCUSDT days</div>`
+      : `<div class="vline">No pair-specific models yet</div>`;
+    return `<div class="c-head"><span class="c-sym">${esc(p.symbol)}</span><span class="c-px">${p.up ? fmtPx(p.last) : ""}</span><span class="c-chg ${cls(c)}">${pct(c)}</span><span class="badge ${bc}">${bt}</span></div>${body}${vl}`;
+  }
+  function renderCards() {
+    const box = $("cards");
+    if (!box.children.length) pairs.forEach(p => { const b = document.createElement("button"); b.className = "card"; b.dataset.key = p.symbol; box.appendChild(b); });
+    box.onclick = e => { const c = e.target.closest(".card"); if (c) select(c.dataset.key); };
+    pairs.forEach(p => {
+      const el = box.querySelector(`[data-key="${p.symbol}"]`);
+      el.className = "card" + (!p.up ? " down" : "") + (badge(p)[0] === "b-val" ? " val" : "");
+      el.innerHTML = cardHtml(p);
+    });
+  }
+  function renderTable() {
+    $("vtable").innerHTML = pairs.map(p => {
+      const v = p.validation;
+      if (!v) return `<tr data-key="${p.symbol}"><td>${esc(p.symbol)}</td><td colspan="7" style="text-align:left;color:var(--muted)">${p.symbol === "BTCUSDT" ? "see docs/hawkes_ensemble.md (2024 days): 24/24 tests" : "not trained"}</td></tr>`;
+      const e = v.ensemble["future_ret_1s"], ok = v.ensemble_beats_baseline_1s;
+      return `<tr data-key="${p.symbol}"><td>${esc(p.symbol)}</td><td>${v.tick_bp.toFixed(2)} bp</td><td>${e.days_better}/${e.n_days}</td><td>${e.p.toExponential(1)}</td>` +
+        `<td class="${cls(e.hit_gain_pp)}">${e.hit_gain_pp >= 0 ? "+" : "−"}${Math.abs(e.hit_gain_pp).toFixed(2)} pp</td><td>${(100 * e.r2).toFixed(2)}%</td>` +
+        `<td>${v.ensemble_tests_won}/${v.ensemble_tests}</td><td class="${ok ? "yes" : "no"}">${ok ? "yes" : e.p < BONF ? "partly" : "no"}</td></tr>`;
+    }).join("");
+    $("vtable").onclick = e => { const r = e.target.closest("tr"); if (r) select(r.dataset.key); };
+  }
+
+  // ---- views
+  function select(key) {
+    if (!key || (key !== "overview" && !pairs.some(p => p.symbol === key))) key = "overview";
+    current = key;
+    if (key !== "overview" && !frames.has(key)) {
+      const p = pairs.find(x => x.symbol === key);
+      const sec = document.createElement("section");
+      sec.className = "view"; sec.id = "v-" + key; sec.setAttribute("role", "tabpanel");
+      const f = document.createElement("iframe");
+      f.title = key + " dashboard";
+      f.src = `${location.protocol}//${location.hostname}:${p.port}/`;
+      sec.appendChild(f); views.appendChild(sec); frames.set(key, sec);
+    }
+    views.querySelectorAll(".view").forEach(v => v.classList.toggle("on", v.id === "v-" + key));
+    try { history.replaceState(null, "", key === "overview" ? location.pathname : "#" + key); } catch (e) { /* ignore */ }
+    renderRail();
+    const t = rail.querySelector(`[data-key="${key}"]`); if (t) t.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
+  }
+  document.addEventListener("keydown", e => {
+    if (e.target.closest("input,textarea") || !["ArrowLeft", "ArrowRight"].includes(e.key)) return;
+    const keys = ["overview", ...pairs.map(p => p.symbol)], i = keys.indexOf(current);
+    select(keys[(i + (e.key === "ArrowRight" ? 1 : keys.length - 1)) % keys.length]);
+  });
+
+  async function poll() {
+    try {
+      const r = await fetch("/api/pairs", { cache: "no-store" });
+      const d = await r.json();
+      const first = !pairs.length;
+      pairs = d.pairs;
+      const up = pairs.filter(p => p.up && p.connected).length;
+      $("live-count").textContent = `${up} of ${pairs.length} live`;
+      renderRail(); renderCards(); renderTable();
+      if (first) select(location.hash.slice(1) || "overview");
+    } catch (e) { $("live-count").textContent = "hub offline"; }
+    setTimeout(poll, 2000);
+  }
+  poll();
+})();
+</script>
+</body>
+</html>

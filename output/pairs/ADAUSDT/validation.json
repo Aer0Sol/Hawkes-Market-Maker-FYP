@@ -1,0 +1,64 @@
+{
+  "symbol": "ADAUSDT",
+  "dates": [
+    "2026-11-10",
+    "2026-11-11",
+    "2026-11-12",
+    "2026-11-13",
+    "2026-11-14",
+    "2026-11-15",
+    "2026-11-16"
+  ],
+  "n_test_days": 6,
+  "tick": 0.0001,
+  "tick_bp": 6.5359477124183005,
+  "median_price": 0.153,
+  "ensemble": {
+    "future_ret_1s": {
+      "days_better": 6,
+      "n_days": 6,
+      "p": 0.003324959212365006,
+      "hit_gain_pp": 8.346945299524595,
+      "r2": 0.0051740538608792686
+    },
+    "future_ret_5s": {
+      "days_better": 6,
+      "n_days": 6,
+      "p": 0.012399136505977093,
+      "hit_gain_pp": 5.490469689430192,
+      "r2": 0.008577542766044591
+    },
+    "future_ret_10s": {
+      "days_better": 6,
+      "n_days": 6,
+      "p": 0.006469460578034187,
+      "hit_gain_pp": 4.313696687127949,
+      "r2": 0.008712816632752788
+    },
+    "future_ofi_1s": {
+      "days_better": 6,
+      "n_days": 6,
+      "p": 0.008313571715256202,
+      "hit_gain_pp": 0.8137432860715833,
+      "r2": 0.012715516319531939
+    }
+  },
+  "tests_won": 5,
+  "tests": 16,
+  "ensemble_tests_won": 4,
+  "ensemble_tests": 4,
+  "ensemble_beats_baseline_1s": true,
+  "taker_gross_per_day_usd": {
+    "baseline_ewma": 5408.059920225023,
+    "event_time": 12438.3461072185,
+    "exact_hawkes": 7044.3924439670145,
+    "hawkes_ensemble": 12354.87702646399,
+    "with_hawkes": 7104.080385491587
+  },
+  "exact_half_lives_s": [
+    0.00042026972552790357,
+    0.01475901469518027,
+    0.3247972733066522
+  ],
+  "minutes": 5.8
+}

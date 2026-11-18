@@ -1,0 +1,64 @@
+{
+  "symbol": "XRPUSDT",
+  "dates": [
+    "2026-11-10",
+    "2026-11-11",
+    "2026-11-12",
+    "2026-11-13",
+    "2026-11-14",
+    "2026-11-15",
+    "2026-11-16"
+  ],
+  "n_test_days": 6,
+  "tick": 0.0001,
+  "tick_bp": 1.0452597470471412,
+  "median_price": 0.9567,
+  "ensemble": {
+    "future_ret_1s": {
+      "days_better": 6,
+      "n_days": 6,
+      "p": 0.001116756665930657,
+      "hit_gain_pp": 1.0966843595580478,
+      "r2": 0.007049948151498693
+    },
+    "future_ret_5s": {
+      "days_better": 6,
+      "n_days": 6,
+      "p": 0.002859366186082699,
+      "hit_gain_pp": 1.1657186955271144,
+      "r2": 0.0023438251472390204
+    },
+    "future_ret_10s": {
+      "days_better": 5,
+      "n_days": 6,
+      "p": 0.15183230630255276,
+      "hit_gain_pp": 0.8315566963156552,
+      "r2": 0.0006561212801901029
+    },
+    "future_ofi_1s": {
+      "days_better": 4,
+      "n_days": 6,
+      "p": 0.396297252331233,
+      "hit_gain_pp": 0.4588815727605944,
+      "r2": 0.01774329322953157
+    }
+  },
+  "tests_won": 6,
+  "tests": 16,
+  "ensemble_tests_won": 2,
+  "ensemble_tests": 4,
+  "ensemble_beats_baseline_1s": true,
+  "taker_gross_per_day_usd": {
+    "baseline_ewma": 2832.8822811776076,
+    "event_time": 7239.0818435927495,
+    "exact_hawkes": 3201.2538918207233,
+    "hawkes_ensemble": 7320.68072500225,
+    "with_hawkes": 3030.1365492497753
+  },
+  "exact_half_lives_s": [
+    0.0009650585215383949,
+    0.07461173193517237,
+    23.987752500548947
+  ],
+  "minutes": 6.3
+}

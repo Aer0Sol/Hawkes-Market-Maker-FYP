@@ -1,6 +1,6 @@
 # Hawkes Market Maker
 
-Hawkes Market Maker is a low-latency market-making research and engineering project that combines microstructure-driven feature engineering, Hawkes-process order flow modeling, and an event-driven C++ quoting engine into one end-to-end pipeline. The project starts from raw market data, builds replayable features, calibrates Hawkes intensities, runs a queue- and toxicity-aware market-making engine, and then evaluates the strategy against a baseline through PnL, markout, regime, and latency analysis. For what changed relative to the original version (several engine bugs fixed, labels corrected, fill model calibrated, multi-seed evaluation), see [`docs/changes.md`](docs/changes.md). The Hawkes calibration diagnostics are in [`docs/hawkes_calibration.md`](docs/hawkes_calibration.md). The original write-up, [`Report.md`](./Report.md), predates these fixes.
+Hawkes Market Maker is a low-latency market-making research and engineering project that combines microstructure-driven feature engineering, Hawkes-process order flow modeling, and an event-driven C++ quoting engine into one end-to-end pipeline. The project starts from raw market data, builds replayable features, calibrates Hawkes intensities, runs a queue- and toxicity-aware market-making engine, and then evaluates the strategy against a baseline through PnL, markout, regime, and latency analysis. For what changed relative to the original version (several engine bugs fixed, labels corrected, fill model calibrated, multi-seed evaluation), see [`docs/changes.md`](docs/changes.md). The Hawkes calibration diagnostics are in [`docs/hawkes_calibration.md`](docs/hawkes_calibration.md). The original write-up, [`docs/Report.md`](docs/Report.md), predates these fixes.
 
 ## Why this project
 
@@ -125,6 +125,47 @@ It also exports the models for the live monitor. Not part of `make all` (about 5
 
 **Outputs:** `output/step6_binance_validation/`, `docs/binance_validation.md`, `plots/09_binance_oos_r2.png`
 
+### Step 7: Hawkes ensemble (the final model)
+
+`make ensemble` builds one forecaster from every Hawkes signal in the project (20 features). It combines:
+
+- **Baseline:** the 5 flow features.
+- **1 s Hawkes:** the discrete intensity.
+- **Exact event-time Hawkes:** a 3-kernel bivariate Hawkes fitted by maximum likelihood on event timestamps. The
+  fitted half-lives are about 3 ms, 0.1 s and 5 s.
+- **Event-time kernels:** the multi-scale decayed counts.
+
+Its ridge penalty is chosen by chronological cross-validation inside the training data. It is tested against
+every single-family model on the BTCUSDT cross-day test and on AAPL. The live monitor runs it.
+See [`docs/hawkes_ensemble.md`](docs/hawkes_ensemble.md).
+
+### Step 8: Execution (making a forced trade cheaper)
+
+`make execution`: a fund must trade $10,000 of BTCUSDT every minute (alternating buy and sell) within 10 seconds,
+on the 6 out-of-sample days. Two strategies use each model's forecast:
+
+- **Timing:** a taker that waits while the forecast says the price is moving its way.
+- **Passive:** rests at the best price as a maker, and crosses when the forecast turns against it or at the
+  deadline.
+
+Benchmark: trade immediately. See [`docs/execution.md`](docs/execution.md).
+
+| Result (8,628 orders per strategy) | Saving vs trading immediately |
+|---|---|
+| Timing, Hawkes ensemble | **+0.118 bp per order** [0.100, 0.136], better on 6/6 days |
+| Timing, baseline signal | +0.093 bp, 6/6 days |
+| Hawkes-family minus baseline, timing | +0.025 bp (p ≈ 0.04, 5/6 days): suggestive |
+| Passive with a forecast minus blind passive | +0.19 bp (6/6 days, p = 0.003) |
+| Passive at the standard tier (maker = taker fee) | −0.08 bp (maker fills are adversely selected) |
+
+**Fees.** The execution rows report fees as a *difference* against the benchmark, not as fees paid.
+Fees are charged as a percentage (10 bp) of each fill's dollar value, price × quantity. Each order's quantity is fixed at arrival, so a fill at a better price than the benchmark costs fewer dollars and pays a slightly smaller fee: the fee difference (strategy fees minus benchmark fees) is then negative. A fill at a worse price makes it positive. At the standard tier, where maker and taker fees are equal, it is about 1,000 times smaller than the price saving (a few dollars of price improvement on a ~$65,000 price moves a $10 fee by a fraction of a cent), and its sign follows the price saving. The live dashboard rounds it, so it can show −$0.01.
+
+This is the project's honest money result. The forecasts don't pay for trading on their own, but they make
+trades a fund has to do anyway measurably cheaper. $0.12 per $10k is about $1,200 a day for a desk executing
+$100M a day. This assumes zero latency and approximates bid/ask from the last trade; the live dashboard runs the
+same strategies on the real order book, with the ensemble's two rows in the leaderboard in red.
+
 ### Live monitor
 
 `make live` starts one process. It collects Binance's public BTCUSDT trade and best bid/ask streams (no key, no
@@ -143,12 +184,59 @@ runs the same strategy on the 6 out-of-sample BTCUSDT days (`output/taker_backte
 | Baseline (EWMA) | +$20,000 | $4.1 bn | −$4.1M | 0.048 bp |
 | +Hawkes | +$21,202 | $3.2 bn | −$3.2M | 0.067 bp |
 | +Event-time | +$21,197 | $3.7 bn | −$3.7M | 0.057 bp |
+| Hawkes ensemble | +$22,697 | $3.3 bn | −$3.3M | 0.068 bp |
 
 The forecasts carry a real gross edge. That gross is an upper bound: it assumes zero latency, trading at the exact
 last price as each second closes. The strategy flips about 30,000 times a day, so it only breaks even at fees about
 150 times below the standard rate. Hawkes features add a little gross and cut turnover by 23%, which helps, but
-nowhere near enough. Option 2, a paper market maker that earns the spread instead of paying it, is planned in
-`plan.md` §8a.
+nowhere near enough. **Paper market maker (option 2).** The dashboard runs six paper market-maker books on the live order book:
+- an at-touch control;
+- Avellaneda–Stoikov quotes as in the C++ engine, with k calibrated on BTCUSDT (`make maker-calibration`);
+- the same A–S quotes plus each model's forecast, as reservation skew and widen/pull protection.
+
+Fills come from real trades with FIFO queues. Each book shows spread captured, 1 s and 10 s markouts, and P&L at zero
+and standard maker fees, and every quote and fill is recorded. `make reconcile DATE=...` replays a recorded session
+through the engine's per-second fill rule and compares it with the live fills.
+
+First minutes: markouts are about −1 bp (fills come mostly when the price runs through the quote), so zero-fee P&L
+is negative for every book and fees are far larger. The A–S books trade about 8× less than the at-touch control and
+lose less. A full-day run is needed to compare the signals (`docs/plan.md` §8a).
+
+### More pairs, side by side (the hub)
+
+`make train-pairs` downloads a week of eight more Binance pairs (ETH, SOL, BNB, XRP, DOGE, ADA, LINK, NEAR;
+2026-11-10 to 16). `scripts/train_pair.py` then runs the step 6–7 cross-day test on each pair: every parameter is
+fitted on day d−1 and tested on day d, for the baseline, +Hawkes, +event-time, exact Hawkes and the ensemble. It
+also calibrates the pair's maker (tick from `exchangeInfo`, k from a tick-grid touch curve) and writes
+`output/pairs/<SYMBOL>/` (`live_model.json`, `cross_day_summary.csv`, `validation.json`, ...).
+
+`make hub` starts one `live_monitor.py` process per pair, each with its own stream, port, paper books and recording
+under `data/live_pairs/<SYMBOL>/`, so they run in parallel and fail independently. It then serves
+<http://127.0.0.1:8800>, which toggles between the pairs: an overview of who is leading on each pair and its offline
+validation, plus each pair's full dashboard. `config/live_pairs.json` lists the pairs and ports (BTCUSDT
+keeps :8765 and its 2024-trained step 6–7 models). A pair set to `managed: false` is shown but never started or
+stopped. Each pair also runs two **event-driven** makers: `ev_none` re-prices the same A–S quotes on every trade and
+quote change (speed alone), and `ev_hawkes` adds a per-trade pull driven by the exact Hawkes intensity. Each
+decision reaches the market 50 ms later (`--ev-latency-ms`). `live_hub.py status` prints one line per pair, and `live_hub.py stop ETHUSDT` stops a single pair.
+
+Offline validation (`output/pairs/*/validation.json`): the Hawkes ensemble beat the baseline on the 1 s return on
+every test day for ETH, SOL, BNB, XRP, DOGE and ADA (p < 0.0125, the Bonferroni level). NEAR was better on 6/6 days
+but not significant (p = 0.06). LINK was 5/6 and not significant. On the 1 s order-flow target the ensemble won
+6/6 days on every pair except XRP.
+
+**Every live strategy is also validated offline** (`make validate-strategies`, report in
+[`docs/strategy_validation.md`](docs/strategy_validation.md)): each test day is replayed trade by trade through the
+live monitor's own code, with models built from the day before. Results that set the live configuration:
+- **Execution** is where the Hawkes signal earns money. Any signal beats passive-without-signal on 7/9 pairs; the
+  best Hawkes model is pair-specific (ensemble on ETH, LINK, NEAR; 1 s Hawkes on XRP, DOGE). The choice per pair is
+  written into each model file (`display.exec_model`, ★ on the dashboard).
+- **Hawkes execution books are event-driven by default.** On every trade they cross when a Hawkes burst (log
+  buy/sell intensity from kernels slower than the 50 ms latency, in the top/bottom 2% of its recent history) runs
+  against the order. Against once-a-second twins on identical orders this is better on 9/9 pairs (passive) and 6/9
+  (timing). Following the touch (re-pegging) lost on 8/9 pairs and is not used.
+- **Market makers:** every A–S variant is within about 0.03 bp of the others at 0 fees; the forecast does not change
+  maker outcomes. `make reconcile DATE=...` compares live fills with the C++ engine's per-second rule: per-fill
+  markouts agree to about 0.13 bp.
 
 ## Quick start
 
@@ -163,7 +251,7 @@ make live             # live dashboard on http://127.0.0.1:8765 (Ctrl-C to stop)
 ```
 
 The raw Databento files are licensed and not in the repo. Steps 1–2 run from the committed outputs unless the raw
-data is present; see [`data/README.md`](data/README.md). Individual targets: `make features | hawkes | build | engine
+data is present; see [`docs/data.md`](docs/data.md). Individual targets: `make features | hawkes | build | engine
 | diagnostics | analysis | causal | fixed | alpha | validate-binance | live | live-replay | plots | bench`.
 
 ## Repository structure
@@ -180,20 +268,30 @@ data is present; see [`data/README.md`](data/README.md). Individual targets: `ma
 │   ├── step4b_fixed_comparison.py      # corrected comparison: replay fills, standardised OFI, causal features
 │   ├── step5_alpha_signal.py           # out-of-sample prediction test (AAPL)
 │   ├── step6_binance_validation.py     # the same test on 7 BTCUSDT days, within- and cross-day
+│   ├── step7_hawkes_ensemble.py        # exact Hawkes MLE + the Hawkes ensemble (BTCUSDT cross-day, AAPL)
+│   ├── step8_execution.py              # BTCUSDT offline execution test (timing / passive)
+│   ├── taker_backtest.py               # paper P&L of trading the 1 s forecasts
+│   ├── calibrate_btc_maker.py          # A-S fill decay k for the BTCUSDT paper maker
+│   ├── build_pair_model.py             # maker calibration + features for any Binance pair
+│   ├── train_pair.py                   # cross-day training/validation of every model for one pair
+│   ├── validate_live_strategies.py     # replays test days through the live code (every strategy)
+│   ├── report_validation.py            # -> docs/strategy_validation.md
+│   ├── reconcile_live_maker.py         # live maker fills vs the engine's per-second fill rule
 │   ├── download_binance.py             # public Binance aggTrades (no key); enforces the holdout
-│   ├── live_monitor.py, live_dashboard.html  # live collector, scorer and dashboard
+│   ├── live_monitor.py, live_dashboard.html  # one pair: collector, models, paper strategies, dashboard
+│   ├── live_hub.py, live_hub.html      # runs every pair in config/live_pairs.json; hub page on :8800
 │   ├── plot_graphs.py                  # review plots -> plots/
 │   ├── benchmark_engine.py             # throughput / latency benchmark
 │   └── download_script.py              # Databento download (costs credits)
-├── output/                             # one folder per step, plus hawkes_diagnostics, fill_calibration
+├── output/                             # one folder per step; pairs/ (per-pair models), validation/
 ├── plots/  benchmark_results/
 ├── tests/                              # smoke, engine behaviour, no-look-ahead, gap-fix and live-parity tests
-├── docs/                               # changes.md, hawkes_calibration.md, alpha_signal.md,
-│                                       # binance_validation.md, project_overview.html
-├── config/holdout.json                 # recorded holdout window and frozen evaluation
-├── data/README.md                      # how to obtain the (gitignored) raw data
+├── docs/                               # changes.md, hawkes_calibration.md, alpha_signal.md, binance_validation.md,
+│                                       # hawkes_ensemble.md, execution.md, strategy_validation.md,
+│                                       # project_overview.html
+├── config/holdout.json, live_pairs.json  # recorded holdout; pairs, ports and models the hub runs
 ├── Makefile  pyproject.toml  uv.lock  .github/workflows/ci.yml
-└── plan.md  Report.md
+└── (every other .md is in docs/: plan, context, data, benchmark report, original Report.md)
 ```
 
 ## Strategy design
@@ -272,20 +370,20 @@ variance, judged at a Bonferroni level of p < 0.0125 for four targets.
 slightly *worse* (DM p = 0.019, not Bonferroni-significant). Event-time features help next-second flow but hurt the
 return forecasts: nine extra regressors overfit on one day.
 
-**BTCUSDT (seven days, `docs/binance_validation.md`): small, consistent gains.**
+**BTCUSDT (seven days): the Hawkes ensemble is the best model.** Cross-day (fit on d−1, test on d, six test days;
+`docs/hawkes_ensemble.md`):
 
-| Test | +Hawkes | +Event-time |
-|---|---|---|
-| Within-day, days with a significant gain on the return targets (21 day×horizon tests) | 17 of 21 at p < 0.05, 4 at p < 0.0125 | 17 of 21 at p < 0.05, 3 at p < 0.0125 |
-| Cross-day (fit d−1, test d), days better on return targets | 13 of 18, p across days 0.06–0.21 | 15 of 18, p 0.016–0.030 |
-| Cross-day, next-second order flow | 5 of 6 days, p = 0.35 | **6 of 6 days, p = 0.0006** |
-| Hit-rate gain on real moves (> 1.5 ticks), cross-day | +2.2 to +2.8 pp | +1.1 to +1.8 pp |
+| Model | Return tests better (of 18) | Flow, days better | p across days (1 s / 5 s / 10 s / flow) | Hit gain, 5 s return | R², 1 s |
+|---|---:|---:|---|---:|---:|
+| +Hawkes (1 s) | 13 | 5/6 | 0.09 / 0.06 / 0.21 / 0.35 | +2.8 pp | 0.007 |
+| +Event-time kernels | 15 | 6/6 | 0.03 / 0.016 / 0.024 / 0.0006 | +1.8 pp | 0.010 |
+| +Exact Hawkes | 15 | 6/6 | 0.03 / 0.020 / 0.031 / 0.003 | +0.6 pp | 0.006 |
+| **Hawkes ensemble** | **18** | **6/6** | **0.012 / 0.005 / 0.004 / 0.0005** | **+3.3 pp** | **0.021** |
 
-On BTCUSDT the Hawkes / event-time features carry information the EWMA baseline lacks, consistently across a week,
-but the effect is small and only the event-time flow forecast clears a multiple-testing threshold across days. AAPL
-says no, and running AAPL with the same flow-only baseline does not change that. Neither "Hawkes is proven to work"
-nor "Hawkes is useless" is supported. The evidence points to the millisecond-scale event-time features, not the 1 s
-discrete Hawkes model, as the more useful order-flow signal.
+The ensemble is better than the baseline on all 24 day×target tests. It is the only model significant on every
+target at the Bonferroni threshold (p < 0.0125), and it roughly doubles R². AAPL (one day) is still not
+significant for any model. There the ensemble's tuned penalty stops the overfitting that made the event-time model
+worse than the baseline. Still one crypto pair over one week; the holdout week is untouched.
 
 Method details that change the answer, all covered in the reports:
 
@@ -346,6 +444,6 @@ horizon, `04` PnL decomposition, `05_*` regime comparisons, `06` latency CDF, `0
 - More days per instrument, then the single holdout evaluation (`config/holdout.json`).
 - Event-time Hawkes features inside the quoting engine, and an event-driven (sub-second) engine to use them.
 - A queue-aware simulator on MBO data, to replace the conservative replay.
-- An HJB + Hawkes controller (plan.md Phase 6a) only after the above. The gating question, whether Hawkes features
+- An HJB + Hawkes controller (docs/plan.md Phase 6a) only after the above. The gating question, whether Hawkes features
   forecast out of sample, now has a qualified yes on BTCUSDT and a no on AAPL. A recent paper attempting exactly this
   (arXiv:2510.26438) found no closed form and its numerical solver did not converge (see `docs/alpha_signal.md`).

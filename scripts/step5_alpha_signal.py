@@ -39,10 +39,6 @@ PLOTS_DIR = Path("plots")
 N_FOLDS = 5
 WARMUP_FRAC = 0.20  # initial training window before the first OOS fold
 RIDGE_ALPHA = 1.0
-# One-way cost assumption for the economic-value check: half the quoted spread, i.e. what a
-# marketable order pays to cross. This is deliberately conservative/simple, not the step 3 fill
-# model; it is stated as an assumption, not fitted.
-COST_HALF_SPREAD = True
 
 BASELINE_FEATURES = [
     "order_flow_imbalance", "lambda_buy_ewm", "lambda_sell_ewm",
@@ -567,6 +563,7 @@ def write_report(summary: pd.DataFrame, paired: pd.DataFrame, regime: pd.DataFra
         "- `future_ofi_1s` is a realized one-second-ahead order-flow imbalance, not a tradeable quantity "
         "by itself; it isolates whether Hawkes intensities forecast flow, separately from price.",
     ]
+    DOC_PATH.parent.mkdir(exist_ok=True)
     DOC_PATH.write_text("\n".join(lines) + "\n")
 
 

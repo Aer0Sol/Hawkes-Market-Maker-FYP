@@ -1,0 +1,64 @@
+{
+  "symbol": "ETHUSDT",
+  "dates": [
+    "2026-11-10",
+    "2026-11-11",
+    "2026-11-12",
+    "2026-11-13",
+    "2026-11-14",
+    "2026-11-15",
+    "2026-11-16"
+  ],
+  "n_test_days": 6,
+  "tick": 0.01,
+  "tick_bp": 0.05500550055005501,
+  "median_price": 1818.0,
+  "ensemble": {
+    "future_ret_1s": {
+      "days_better": 6,
+      "n_days": 6,
+      "p": 0.003204911661584467,
+      "hit_gain_pp": 3.370336603558636,
+      "r2": 0.0349719354342917
+    },
+    "future_ret_5s": {
+      "days_better": 6,
+      "n_days": 6,
+      "p": 0.009542187949879632,
+      "hit_gain_pp": 1.6441824832006624,
+      "r2": 0.01440986213493034
+    },
+    "future_ret_10s": {
+      "days_better": 6,
+      "n_days": 6,
+      "p": 0.054423120809194286,
+      "hit_gain_pp": 1.1447278060169004,
+      "r2": 0.00714616401519345
+    },
+    "future_ofi_1s": {
+      "days_better": 6,
+      "n_days": 6,
+      "p": 4.218193492072524e-05,
+      "hit_gain_pp": 2.031161991869849,
+      "r2": 0.07360609550813335
+    }
+  },
+  "tests_won": 11,
+  "tests": 16,
+  "ensemble_tests_won": 4,
+  "ensemble_tests": 4,
+  "ensemble_beats_baseline_1s": true,
+  "taker_gross_per_day_usd": {
+    "baseline_ewma": 9797.568950108158,
+    "event_time": 12785.534815197141,
+    "exact_hawkes": 12090.345244638678,
+    "hawkes_ensemble": 12948.99160097464,
+    "with_hawkes": 10344.179007956483
+  },
+  "exact_half_lives_s": [
+    0.00021754705747391133,
+    0.0036454926161761216,
+    0.09995774157842177
+  ],
+  "minutes": 8.2
+}

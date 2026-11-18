@@ -1,0 +1,15 @@
+{
+  "_comment": "Pairs run by scripts/live_hub.py. Pairs with managed=false are shown but never started or stopped by the hub.",
+  "hub_port": 8800,
+  "pairs": [
+    {"symbol": "BTCUSDT",  "port": 8765, "model": "output/step6_binance_validation/live_model.json", "record": "data/live", "managed": true},
+    {"symbol": "ETHUSDT",  "port": 8767, "model": "output/pairs/ETHUSDT/live_model.json",  "record": "data/live_pairs/ETHUSDT",  "managed": true},
+    {"symbol": "SOLUSDT",  "port": 8768, "model": "output/pairs/SOLUSDT/live_model.json",  "record": "data/live_pairs/SOLUSDT",  "managed": true},
+    {"symbol": "BNBUSDT",  "port": 8769, "model": "output/pairs/BNBUSDT/live_model.json",  "record": "data/live_pairs/BNBUSDT",  "managed": true},
+    {"symbol": "XRPUSDT",  "port": 8770, "model": "output/pairs/XRPUSDT/live_model.json",  "record": "data/live_pairs/XRPUSDT",  "managed": true},
+    {"symbol": "DOGEUSDT", "port": 8771, "model": "output/pairs/DOGEUSDT/live_model.json", "record": "data/live_pairs/DOGEUSDT", "managed": true},
+    {"symbol": "ADAUSDT",  "port": 8772, "model": "output/pairs/ADAUSDT/live_model.json",  "record": "data/live_pairs/ADAUSDT",  "managed": true},
+    {"symbol": "LINKUSDT", "port": 8773, "model": "output/pairs/LINKUSDT/live_model.json", "record": "data/live_pairs/LINKUSDT", "managed": true},
+    {"symbol": "NEARUSDT", "port": 8766, "model": "output/pairs/NEARUSDT/live_model.json", "record": "data/live_pairs/NEARUSDT", "managed": true}
+  ]
+}

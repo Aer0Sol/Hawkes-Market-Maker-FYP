@@ -1,0 +1,16 @@
+family,model,pairs_better_than_ensemble,n_pairs,mean_diff_vs_ensemble
+maker,baseline_ewma,5,9,-0.001269932661094443
+maker,with_hawkes,5,9,0.000436738666864716
+maker,event_time,6,9,0.0011296606684021685
+taker,baseline_ewma,0,9,-0.1431096020149728
+taker,with_hawkes,0,9,-0.11394568976865233
+taker,event_time,2,9,-0.004725925599870088
+execution_timing,baseline_ewma,3,9,-0.00545682013900536
+execution_timing,with_hawkes,5,9,0.07650562386125054
+execution_timing,event_time,3,9,-0.004083075683325528
+execution_passive,baseline_ewma,4,9,0.03394029782325967
+execution_passive,with_hawkes,5,9,0.07782860819985864
+execution_passive,event_time,2,9,-0.00954739117307072
+forecast,baseline_ewma,0,9,-0.009639171025516976
+forecast,with_hawkes,0,9,-0.008734585403907175
+forecast,event_time,5,9,-0.0008785760996743541

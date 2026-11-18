@@ -77,7 +77,9 @@ def load_trades(path: Path) -> pd.DataFrame:
     cols = ["agg_trade_id", "price", "quantity", "first_trade_id", "last_trade_id",
             "transact_time", "is_buyer_maker", "is_best_match"]
     df = pd.read_csv(path, header=None, names=cols)
-    df["ts"] = pd.to_datetime(df["transact_time"], unit="ms", utc=True)
+    # Binance switched its daily files from milliseconds to microseconds (16 digits) in 2025.
+    unit = "us" if df["transact_time"].max() > 1e14 else "ms"
+    df["ts"] = pd.to_datetime(df["transact_time"], unit=unit, utc=True)
     df["trade_sign"] = map_binance_aggressor(df["is_buyer_maker"])
     return df[["ts", "price", "quantity", "trade_sign"]]
 
@@ -334,6 +336,7 @@ def write_report(dates, fits: pd.DataFrame, within: pd.DataFrame, within_sum: pd
         "- The hour-of-day baseline is fitted on the same day it describes.",
         "- Ridge α = 1 is not tuned; models are linear.",
     ]
+    DOC_PATH.parent.mkdir(exist_ok=True)
     DOC_PATH.write_text("\n".join(L) + "\n")
 
 

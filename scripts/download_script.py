@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 
-import pandas as pd
 import databento as db
 from dotenv import load_dotenv
 
